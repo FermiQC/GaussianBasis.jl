@@ -22,3 +22,8 @@ docs/site/
 # committed for packages, but should be committed for applications that require a static
 # environment.
 Manifest.toml
+
+# Basis set files
+*.gbs
+deps/*.so
+deps/lib
