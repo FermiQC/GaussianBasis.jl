@@ -1,4 +1,4 @@
-const LIBPATH = joinpath(@__DIR__, "../../deps/lib")
+const LIBPATH = joinpath(@__DIR__, "../deps/lib")
 const AM_pat = r"([SPDFGHI]{1,2})\s+?(\d++)"
 const prim_pat = r"([+-]?\d*?\.\d+[D+-]{0,2}\d\d)\s+?([+-]?\d*?\.\d+[D+-]{0,2}+\d\d)"
 const prim_pat3 = r"([+-]?\d*?\.\d+[D+-]{0,2}\d\d)\s+?([+-]?\d*?\.\d+[D+-]{0,2}+\d\d)\s+?([+-]?\d*?\.\d+[D+-]{0,2}+\d\d)"
@@ -17,15 +17,13 @@ const AMDict = Dict(
 
 Returns an array of BasisFunction objects given an atom (AtomicSymbol) and basis set name (bname).
 """
-@memoize function read_basisset(bname::String, AtomSymbol::String)
+function read_basisset(bname::String, AtomSymbol::String)
 
     clean_bname = replace(bname, "*"=>"_st_")
     file_path = joinpath(LIBPATH, clean_bname*".gbs")
 
-    output("\nLooking for atom $AtomSymbol in basisset file at: $file_path")
-
     if !(isfile(file_path))
-        throw(FermiException("Basis set file for $bname was not found."))
+        throw(ArgumentError("Basis set file for $bname was not found."))
     end
 
     info = extract_atom_from_bs(file_path, AtomSymbol)
@@ -41,7 +39,7 @@ Returns an array of BasisFunction objects given an atom (AtomicSymbol) and basis
     end
 
     out = BasisFunction[]
-    output("Basis functions for $AtomSymbol: ", ending="")
+
     for b in BasisStrings
         r = r"[SPDFGHI]{2}"
         if occursin(r, b)
@@ -56,7 +54,6 @@ Returns an array of BasisFunction objects given an atom (AtomicSymbol) and basis
             push!(out, bf)
         end
     end
-    output("")
 
     return out
 end
@@ -83,7 +80,6 @@ function extract_atom_from_bs(file_path::String, AtomSymbol::String)
     if flag_atom
         return out
     else
-        output("")
         throw(FermiException("Atom $AtomSymbol not found in $file_path."))
     end
 end
@@ -94,7 +90,7 @@ function basis_from_string(bstring::String)
     m = match(AM_pat, head)
 
     if m === nothing
-        throw(FermiException("cannot parse basis set file line: $head"))
+        throw(ArgumentError("cannot parse basis set file line: $head"))
     end
 
     AMsymbol = String(m.captures[1])
@@ -107,7 +103,7 @@ function basis_from_string(bstring::String)
         m = match(prim_pat, lines[i+1])
 
         if m === nothing
-            throw(FermiException("cannot parse basis set file line: $(lines[i+1])"))
+            throw(ArgumentError("cannot parse basis set file line: $(lines[i+1])"))
         end
 
         e = replace(m.captures[1], "D"=>"E")
@@ -116,7 +112,6 @@ function basis_from_string(bstring::String)
         exp[i] = parse(Float64, e)
     end
 
-    output(AMsymbol, ending=" ")
     return BasisFunction(l, coef, exp)
 end
 
@@ -125,7 +120,7 @@ function two_basis_from_string(bstring::String)
     head = lines[1]
     m = match(AM_pat, head)
     if m === nothing
-        throw(FermiException("cannot parse basis set file line: $head"))
+        throw(ArgumentError("cannot parse basis set file line: $head"))
     end
     AMsymbol = String(m.captures[1])
 
@@ -143,7 +138,7 @@ function two_basis_from_string(bstring::String)
         m = match(prim_pat3, lines[i+1])
 
         if m === nothing
-            throw(FermiException("cannot parse basis set file line: $(lines[i+1])"))
+            throw(ArgumentError("cannot parse basis set file line: $(lines[i+1])"))
         end
 
         e = replace(m.captures[1], "D"=>"E")
@@ -154,6 +149,5 @@ function two_basis_from_string(bstring::String)
         exp[i] = parse(Float64, e)
     end
 
-    output(AMsymbol, ending=" ")
     return BasisFunction(l1, coef1, exp), BasisFunction(l2, coef2, exp)
 end

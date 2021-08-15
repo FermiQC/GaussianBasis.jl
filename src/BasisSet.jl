@@ -1,50 +1,4 @@
-using Memoize
-using Formatting
-
 import Base: getindex, show
-
-export BasisSet, BasisFunction
-
-include("BasisParser.jl")
-
-@doc raw"""
-    GaussianBasis.BasisFunction
-
-Object representing a shell of Gaussian basis functions composed of ``N`` primitives: 
-
-```math
-\chi_{l,m} = \sum_i^N C_i r^{l}e^{-\zeta_i r^2} Y_{l,m}(\theta,\phi)
-```
-
-# Fields
-
-| Name    | Type | Description |
-|:--------|:------|:-----------------------------------------------------------|
-|`l`      |`Int32`            | Angular momentum number (e.g. 0, 1, 2 for S, P, D...)      |
-|`coef`   |`Array{Float64,1}` | Array with coefficients (``C_i``) for each primitive       |
-|`exp`    |`Array{Float64,1}` | Array with exponents (``\zeta_i``) for each primitive      |
-
-# Examples
-
-```julia
-julia> bf = Fermi.GaussianBasis.BasisFunction(1, [1/√2, 1/√2], [5.0, 1.2])
-P shell with 3 basis built from 2 primitive gaussians
-
-χ₁₋₁ =    0.7071067812⋅Y₁₋₁⋅r¹⋅exp(-5.0⋅r²)
-     +    0.7071067812⋅Y₁₋₁⋅r¹⋅exp(-1.2⋅r²)
-
-χ₁₀  =    0.7071067812⋅Y₁₀⋅r¹⋅exp(-5.0⋅r²)
-     +    0.7071067812⋅Y₁₀⋅r¹⋅exp(-1.2⋅r²)
-
-χ₁₁  =    0.7071067812⋅Y₁₁⋅r¹⋅exp(-5.0⋅r²)
-     +    0.7071067812⋅Y₁₁⋅r¹⋅exp(-1.2⋅r²)
-```
-"""
-struct BasisFunction
-    l::Cint
-    coef::Array{Cdouble,1}
-    exp::Array{Cdouble,1}
-end
 
 """
     GaussianBasis.BasisSet
@@ -55,9 +9,9 @@ Object holding a set of BasisFunction objects associated with each atom in a mol
 
 | Name        | Type                               |   Description |
 |:------------|:-----------------------------------|:-----------------------------------------------------------|
-|`molecule`   | `Molecule`                         | Fermi.Geometry.Molecule object  |
-|`basis_name` | `String`                           | String holding the basis set name  |
-|`basis`      | `Dict{Atom,Array{BasisFunction,1}}`| A dictionary that maps Atom objects to an Array of BasisFunction  |
+|`atoms`      | `Vector{Atom}`                     | An array of Molecules.Atom objects  |
+|`name`       | `String`                           | String holding the basis set name  |
+|`basis`      | `Vector{BasisFunction}`            | An Array of BasisFunction          |
 |`natoms`     | `Int32`                            | Number of atoms in the BasisSet |
 |`nbas`       | `Int32`                            | Number of basis functions (Note, not equal the number of BasisFunction objects) |
 |`nshells`    | `Int32`                            | Number of shells, i.e. BasisFunction objects |
@@ -127,7 +81,7 @@ H: 1s 1p
 struct BasisSet
     name::String
     atoms::Vector{Atom}
-    basis::Vector{BasisFunction}
+    basis::Vector{Vector{BasisFunction}}
     natoms::Cint
     nbas::Cint
     nshells::Cint
@@ -136,25 +90,28 @@ struct BasisSet
     lc_env::Array{Cdouble,1}
 end
 
-function BasisSet()
-    mol = Molecule()
-    bname = Options.get("basis")
-    BasisSet(mol, bname)
-end
+function BasisSet(name::String, atoms::Vector{T}) where T <: Atom
 
-function BasisSet(mol::Molecule, basis_name::String)
+    basis = Vector{BasisFunction}[]
 
-    output("\n  ⇒ Preparing new Basis Set: {:s}", basis_name)
-    shells = Dict{Atom, Array{BasisFunction,1}}()
-    for A in mol.atoms
-        shells[A] = read_basisset(basis_name, A.AtomicSymbol)
+    # Cache entries so repeated atoms don't need to be looked up all the time
+    cache = Dict()
+    for i in eachindex(atoms)
+        S = symbol(atoms[i])
+        if S in keys(cache)
+            push!(basis, cache[S])
+        else
+            push!(basis, read_basisset(name, S))
+            cache[S] = basis[end]
+        end
     end
-    BasisSet(mol, basis_name, shells)
+    BasisSet(name, atoms, basis)
 end
 
-function BasisSet(mol::Molecule, basis_name::String, shells::Dict{Atom, Array{BasisFunction,1}})
+function BasisSet(name::String, atoms::Vector{T}, basis::Vector{Vector{BasisFunction}}) where T <: Atom
 
-    atoms = mol.atoms
+    length(atoms) != length(basis) ? throw(ArgumentError("Error combining atoms and basis functions")) : nothing
+
     ATM_SLOTS = 6
     BAS_SLOTS = 8
 
@@ -164,9 +121,8 @@ function BasisSet(mol::Molecule, basis_name::String, shells::Dict{Atom, Array{Ba
     nexps = 0
     nprims = 0
 
-    for A in atoms
-        basis = shells[A]
-        for b in basis
+    for i in eachindex(atoms)
+        for b in basis[i]
             nshells += 1
             nbas += 2*b.l + 1
             nexps += length(b.exp)
@@ -188,13 +144,13 @@ function BasisSet(mol::Molecule, basis_name::String, shells::Dict{Atom, Array{Ba
         lc_atm[1 + ATM_SLOTS*(i-1)] = Cint(A.Z)
         # The second one is the env index address for xyz
         lc_atm[2 + ATM_SLOTS*(i-1)] = off
-        env[off+1:off+3] .= A.xyz ./ Fermi.PhysicalConstants.bohr_to_angstrom
+        env[off+1:off+3] .= A.xyz ./ Molecules.bohr_to_angstrom
         off += 3
         # The remaining 4 slots are zero.
 
         # Prepare the lc_bas input
-        for j = eachindex(shells[A])
-            B = shells[A][j] 
+        for j = eachindex(basis[i])
+            B = basis[i][j] 
             Ne = length(B.exp)
             Nc = length(B.coef)
             # lc_bas has BAS_SLOTS for each basis set
@@ -220,24 +176,23 @@ function BasisSet(mol::Molecule, basis_name::String, shells::Dict{Atom, Array{Ba
             ib += 1
         end
     end
-    empty!(memoize_cache(read_basisset))
-    output("")
-    return BasisSet(mol, basis_name, shells, natm, nbas, nshells, lc_atm, lc_bas, env)
+
+    return BasisSet(name, atoms, basis, natm, nbas, nshells, lc_atm, lc_bas, env)
 end
 
 """
-    Fermi.GaussianBasis.gto_norm(n::Signed, a::AbstractFloat)
+    GaussianBasis.gto_norm(n::Signed, a::AbstractFloat)
 
 Function that returns the normalization factor for a gaussian basis function rⁿ⋅exp(-a⋅r²)
 """
-function gto_norm(n::Signed, a::AbstractFloat)
+function gto_norm(n, a)
    # normalization factor of function rⁿ exp(-ar²)
     s = 2^(2n+3) * factorial(n+1) * (2a)^(n+1.5) / (factorial(2n+2) * √π)
     return √s
 end
 
 """
-    Fermi.GaussianBasis.normalize_basisfunction!(B::BasisFunction)
+    GaussianBasis.normalize_basisfunction!(B::BasisFunction)
 
 Modify the BasisFunction object by normalizing each primitive.
 """
@@ -248,13 +203,11 @@ function normalize_basisfunction!(B::BasisFunction)
 end
 
 function getindex(B::BasisSet, N::Int)
-    A = B.molecule.atoms[N]
-    return B.basis[A]
+    return B.basis[N]
 end
 
 function getindex(B::BasisSet, i::Int, j::Int)
-    A = B.molecule.atoms[i]
-    return B.basis[A][j]
+    return B.basis[i][j]
 end
 
 function string_repr(B::BasisFunction)
@@ -271,7 +224,7 @@ function string_repr(B::BasisFunction)
     nprim = length(B.exp)
 
     # Reverse Dict(symbol=>num) to get Symbols from B.l
-    Lsymbol = Dict(value => key for (key, value) in Fermi.GaussianBasis.AMDict)[B.l]
+    Lsymbol = Dict(value => key for (key, value) in AMDict)[B.l]
     out = "$(Lsymbol) shell with $nbas basis built from $nprim primitive gaussians\n\n"
     for m in mvals
         # Add sub minus sign (0x208B) if necessary
@@ -298,7 +251,7 @@ function string_repr(B::BasisFunction)
 end
 
 function string_repr(B::BasisSet)
-    out  =  "$(B.basis_name) Basis Set\n"
+    out  =  "$(B.name) Basis Set\n"
     out *= "Number of shells: $(B.nshells)\n"
     out *= "Number of basis:  $(B.nbas)\n\n"
 
@@ -312,11 +265,12 @@ function string_repr(B::BasisSet)
         6 => "i",
     )
 
-    for A in B.molecule.atoms
+    for i in eachindex(B.atoms)
+        A = B.atoms[i]
         # Count how many times s,p,d appears for numbering
         count = zeros(Int16, 7)
-        out *= "$(A.AtomicSymbol): "
-        for bfs in B.basis[A]
+        out *= "$(symbol(A)): "
+        for bfs in B.basis[i]
             L = bfs.l
             count[L+1] += 1
             out *= "$(count[L+1])$(l_to_symbol[L]) "
@@ -331,5 +285,3 @@ end
 function show(io::IO, ::MIME"text/plain", X::T) where T<:Union{BasisFunction, BasisSet}
     print(io, string_repr(X))
 end
-
-end #module
