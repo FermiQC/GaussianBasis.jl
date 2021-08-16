@@ -45,5 +45,7 @@ end
 
 include("BasisParser.jl")
 include("BasisSet.jl")
+include("Libcint.jl")
+include("Integrals.jl")
 
 end # module

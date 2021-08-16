@@ -1,6 +1,4 @@
-function sparse_ao_2e4c(BS::BasisSet, T::DataType = Float64)
-
-    cutoff = Options.get("eri_cutoff")
+function sparse_ao_2e4c(BS::BasisSet, T::DataType = Float64, cutoff = 1e-12)
 
     # Number of unique integral elements
     N = Int((BS.nbas^2 - BS.nbas)/2) + BS.nbas
@@ -125,7 +123,23 @@ function ao_2e4c(BS::BasisSet, T::DataType = Float64)
 
     # Allocate output array
     out = zeros(T, BS.nbas, BS.nbas, BS.nbas, BS.nbas)
-    unique_idx = find_indices(BS.nshells)
+
+    # Find unique (i,j,k,l) combinations given permutational symmetry
+    unique_idx = NTuple{4,Int16}[]
+    N = Int16(BS.nshells - 1)
+    ZERO = zero(Int16)
+    for i = ZERO:N
+        for j = i:N
+            for k = ZERO:N
+                for l = k:N
+                    if index2(i,j) < index2(k,l)
+                        continue
+                    end
+                    push!(unique_idx, (i,j,k,l))
+                end
+            end
+        end
+    end
 
     @sync for (i,j,k,l) in unique_idx
         Threads.@spawn begin

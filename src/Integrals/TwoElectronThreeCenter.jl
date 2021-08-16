@@ -14,23 +14,22 @@ function ao_2e3c(BS::BasisSet, auxBS::BasisSet, T::DataType = Float64)
     # Prepare the lc_atom input 
     off = 0
     ib = 0 
-    for i = eachindex(BS.molecule.atoms)
-        A = BS.molecule.atoms[i]
+    for i = eachindex(BS.atoms)
+        A = BS.atoms[i]
         # lc_atom has ATM_SLOTS (6) "spaces" for each atom
         # The first one (Z_INDEX) is the atomic number
         lc_atm[1 + ATM_SLOTS*(i-1)] = Cint(A.Z)
         # The second one is the env index address for xyz
         lc_atm[2 + ATM_SLOTS*(i-1)] = off
-        env[off+1:off+3] .= A.xyz ./ Fermi.PhysicalConstants.bohr_to_angstrom
+        env[off+1:off+3] .= A.xyz ./ Molecules.bohr_to_angstrom
         off += 3
         # The remaining 4 slots are zero.
     end
 
-    for i = eachindex(BS.molecule.atoms)
-        A = BS.molecule.atoms[i]
+    for i = eachindex(BS.atoms)
         # Prepare the lc_bas input
-        for j = eachindex(BS.basis[A])
-            B = BS.basis[A][j] 
+        for j = eachindex(BS.basis[i])
+            B = BS[i,j] 
             Ne = length(B.exp)
             Nc = length(B.coef)
             # lc_bas has BAS_SLOTS for each basis set
@@ -57,11 +56,10 @@ function ao_2e3c(BS::BasisSet, auxBS::BasisSet, T::DataType = Float64)
         end
     end
 
-    for i = eachindex(auxBS.molecule.atoms)
-        A = auxBS.molecule.atoms[i]
+    for i = eachindex(auxBS.atoms)
         # Prepare the lc_bas input
-        for j = eachindex(auxBS.basis[A])
-            B = auxBS.basis[A][j] 
+        for j = eachindex(auxBS.basis[i])
+            B = auxBS[i,j] 
             Ne = length(B.exp)
             Nc = length(B.coef)
             # lc_bas has BAS_SLOTS for each basis set

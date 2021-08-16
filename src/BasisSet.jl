@@ -23,7 +23,7 @@ Object holding a set of BasisFunction objects associated with each atom in a mol
 
 Build a basis set from default options
 ```julia
-julia> bset = Fermi.GaussianBasis.BasisSet()
+julia> bset = GaussianBasis.BasisSet()
 sto-3g Basis Set
 Number of shells: 5
 Number of basis:  7
