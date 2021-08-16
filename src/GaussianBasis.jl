@@ -4,6 +4,8 @@ using Molecules
 using Formatting
 import Molecules: Atom, symbol
 
+export BasisFunction, BasisSet
+
 @doc raw"""
     GaussianBasis.BasisFunction
 
