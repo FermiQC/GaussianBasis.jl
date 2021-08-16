@@ -2,3 +2,13 @@ name = "GaussianBasis"
 uuid = "9bb1a3dc-0d1c-467e-84f5-0c4ef701360a"
 authors = ["gustavojra <gustavo.aroeira@gmail.com>"]
 version = "0.1.0"
+
+[deps]
+Formatting = "59287772-0a20-5a39-b81b-1366585eb4c0"
+HDF5 = "f67ccb44-e63f-5c2f-98bd-6dc0ccc4ba2f"
+Molecules = "5de6a177-b489-40a9-b2f4-524242b9b679"
+
+[compat]
+Formatting = "^0.4"
+Molecules = "^0.1.1"
+julia = "^1.5"
