@@ -129,4 +129,28 @@ function cint1e_ipnuc_sph!(buf, shls, atm, natm, bas, nbas, env)
                                    )::Cvoid
 end
 
+function cint1e_ia01p_sph!(buf, shls, atm, natm, bas, nbas, env)
+    @ccall LIBCINT.cint1e_ia01p_sph(
+                                    buf  :: Ptr{Cdouble},
+                                    shls :: Ptr{Cint},
+                                    atm  :: Ptr{Cint},
+                                    natm :: Cint,
+                                    bas  :: Ptr{Cint},
+                                    nbas :: Cint,
+                                    env  :: Ptr{Cdouble}
+                                   )::Cvoid
+end
+
+function cint1e_iprinv_sph!(buf, shls, atm, natm, bas, nbas, env)
+    @ccall LIBCINT.cint1e_iprinv_sph(
+                                    buf  :: Ptr{Cdouble},
+                                    shls :: Ptr{Cint},
+                                    atm  :: Ptr{Cint},
+                                    natm :: Cint,
+                                    bas  :: Ptr{Cint},
+                                    nbas :: Cint,
+                                    env  :: Ptr{Cdouble}
+                                   )::Cvoid
+end
+
 end #module

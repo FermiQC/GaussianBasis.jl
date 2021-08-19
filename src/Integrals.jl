@@ -8,6 +8,10 @@ function index2(i, j)
     end
 end
 
+function index4(i,j,k,l)
+    return index2(index2(i,j), index2(k,l))
+end
+
 include("Integrals/OneElectron.jl")
 include("Integrals/TwoElectronTwoCenter.jl")
 include("Integrals/TwoElectronThreeCenter.jl")
