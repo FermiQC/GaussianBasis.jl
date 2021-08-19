@@ -49,5 +49,7 @@ include("BasisParser.jl")
 include("BasisSet.jl")
 include("Libcint.jl")
 include("Integrals.jl")
+include("Gradients/FiniteDifferences.jl")
+include("Gradients/OneElectronGrad.jl")
 
 end # module

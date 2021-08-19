@@ -1,103 +1,49 @@
-function create_displacement(mol, A::Int, i::Int, h)
+# Given a list of atoms, create a cartesian displamentent in one of them (A)
+function create_displacement(bs::BasisSet, A::Int, i::Int, h)
 
-    new_atoms = [mol.atoms...]
-    atomA = mol.atoms[A]
-    new_xyz = [atomA.xyz...]
-    new_xyz[i] += h #* √(mass[atomA.Z]) * PhysicalConstants.bohr_to_angstrom
-    new_atoms[A] = Fermi.Geometry.Atom(atomA.AtomicSymbol, atomA.Z, (new_xyz[1], new_xyz[2], new_xyz[3]))
+    Aplus = deepcopy(bs.atoms)
+    Aplus[A].xyz[i] += h
 
-    return Fermi.Geometry.Molecule(new_atoms, mol.charge, mol.multiplicity)
+    Aminus = deepcopy(bs.atoms)
+    Aminus[A].xyz[i] -= h
+
+    bs_plus = BasisSet(bs.name, Aplus)
+    bs_minus = BasisSet(bs.name, Aminus)
+
+    return bs_plus, bs_minus
 end
 
-function apply_gradient(mol, g, d = 0.001)
-    Zvals = [A.Z for A = mol.atoms]
-    Svals = [A.AtomicSymbol for A = mol.atoms]
+function findif_ao_1e(bs::BasisSet, compute::String, A, i, h=0.005)
 
-    new_atoms = Fermi.Geometry.Atom[]
+    bs_plus, bs_minus = create_displacement(bs, A, i, h)
 
-    for i = eachindex(Zvals)
-        x = mol.atoms[i].xyz[1] - d*g[i, 1]
-        y = mol.atoms[i].xyz[2] - d*g[i, 2]
-        z = mol.atoms[i].xyz[3] - d*g[i, 3]
-        push!(new_atoms, Fermi.Geometry.Atom(Svals[i], Zvals[i], (x,y,z)))
-    end
+    Xplus = ao_1e(bs_plus, compute)
+    Xminus = ao_1e(bs_minus, compute)
 
-    return Fermi.Geometry.Molecule(new_atoms, mol.charge, mol.multiplicity)
+    return (Xplus - Xminus) ./ (2*h)
 end
 
-function geom_rms(mol1, mol2)
-    out = 0.0
-    N = length(mol1.atoms)
-    for a in 1:N
-        out += sum((mol1.atoms[a].xyz .- mol2.atoms[a].xyz).^2)
-    end
-    return √(out / 3*N)
+function findif_ao_2e4c(bs::BasisSet, A, i, h=0.005)
+
+    bs_plus, bs_minus = create_displacement(bs, A, i, h)
+
+    Xplus = ao_2e4c(bs_plus)
+    Xminus = ao_2e4c(bs_minus)
+
+    return (Xplus - Xminus) ./ (2*h)
+
 end
 
-function findif_intgrad(X::String, mol, A, i, h=0.005)
-    mol_disp = create_displacement(mol, A, i, h)
-    I = Fermi.Integrals.IntegralHelper(molecule=mol_disp)
-    Xplus = I[X]
-    mol_disp = create_displacement(mol, A, i, -h)
-    I = Fermi.Integrals.IntegralHelper(molecule=mol_disp)
-    Xminus = I[X]
-    g = (Xplus - Xminus) ./ (2*h)
-    return g * PhysicalConstants.bohr_to_angstrom
-end
+function findif_sparse_ao_2e4c(bs::BasisSet, A, i, h=0.005)
 
-function gradient_test(mol, energy_function, h=0.005)
-    N = length(mol.atoms)
-    Eplus = zeros(N,3)
-    Eminus = zeros(N,3)
+    bs_plus, bs_minus = create_displacement(bs, A, i, h)
 
-    # Plus
-    for A = 1:N, i = 1:3
-        mol_disp = create_displacement(mol, A, i, h)
-        wfn = eval(Expr(:call, energy_function, mol_disp))
-        Eplus[A,i] = wfn.energy
-    end
-    # Minus
-    for A = 1:N, i = 1:3
-        mol_disp = create_displacement(mol, A, i, -h)
-        wfn = eval(Expr(:call, energy_function, mol_disp))
-        Eminus[A,i] = wfn.energy
-    end
+    Iplus, Xplus = sparse_ao_2e4c(bs_plus)
+    Iminus, Xminus = sparse_ao_2e4c(bs_minus)
 
-    g = (Eplus - Eminus) ./ (2*h)
+    @assert Iplus == Iminus
 
-    return g
-end
+    Xout = (Xplus - Xminus) ./ (2*h)
 
-function opt_test(energy_function; h=0.005, d=0.01)
-    @set printstyle none
-
-    scf_Etol  = Options.get("scf_e_conv")
-    scf_Dtol  = Options.get("scf_max_rms")
-    old_mol = Fermi.Geometry.Molecule()
-
-    # Central
-    wfn = eval(Expr(:call, energy_function, old_mol))
-    oldE = wfn.energy
-    println(format("Initial Energy: {:15.10f}", oldE))
-
-    ite = 1
-    dE = 1
-    while abs(dE) > 1e-8
-        g = gradient_test(old_mol, energy_function, h)
-        new_mol = apply_gradient(old_mol, g, d)
-        wfn = eval(Expr(:call, energy_function, new_mol))
-        if abs(wfn.e_conv) > scf_Etol || abs(wfn.d_conv) > scf_Dtol
-            display(new_mol)
-            error("SCF not converged")
-        end
-        dE = oldE - wfn.energy
-        RMS = √(sum(g.^2) / length(g))
-        GRMS = geom_rms(old_mol, new_mol)
-        println(format("Iter {:3}   Energy: {:15.10f}   ΔE: {:15.10f}   RMS: {:15.10f}   GRMS: {:15.10f}", ite, wfn.energy, dE, RMS, GRMS))
-        oldE = wfn.energy
-        old_mol = new_mol
-        ite += 1
-    end
-
-    display(old_mol)
+    return Iplus, Xout
 end
