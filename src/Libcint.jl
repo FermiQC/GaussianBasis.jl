@@ -7,7 +7,7 @@ libcint functions to the Julia interface.
 module Libcint
 
 export cint1e_kin_sph!, cint1e_nuc_sph!, cint1e_ovlp_sph!, cint2c2e_sph!, cint2e_sph!, cint3c2e_sph!
-export cint1e_ipkin_sph!, cint1e_ipnuc_sph!, cint1e_ipovlp_sph!
+export cint1e_ipkin_sph!, cint1e_ipnuc_sph!, cint1e_ipovlp_sph!, cint2e_ip1_sph!
 
 const LIBCINT = joinpath(@__DIR__, "../deps/libcint")
 
@@ -126,6 +126,20 @@ function cint1e_ipnuc_sph!(buf, shls, atm, natm, bas, nbas, env)
                                     bas  :: Ptr{Cint},
                                     nbas :: Cint,
                                     env  :: Ptr{Cdouble}
+                                   )::Cvoid
+end
+
+function cint2e_ip1_sph!(buf, shls, atm, natm, bas, nbas, env)
+    opt = Ptr{UInt8}(C_NULL)
+    @ccall LIBCINT.cint2e_ip1_sph(
+                                    buf  :: Ptr{Cdouble},
+                                    shls :: Ptr{Cint},
+                                    atm  :: Ptr{Cint},
+                                    natm :: Cint,
+                                    bas  :: Ptr{Cint},
+                                    nbas :: Cint,
+                                    env  :: Ptr{Cdouble},
+                                    opt :: Ptr{UInt8},
                                    )::Cvoid
 end
 

@@ -51,5 +51,6 @@ include("Libcint.jl")
 include("Integrals.jl")
 include("Gradients/FiniteDifferences.jl")
 include("Gradients/OneElectronGrad.jl")
+include("Gradients/TwoElectronGrad.jl")
 
 end # module
