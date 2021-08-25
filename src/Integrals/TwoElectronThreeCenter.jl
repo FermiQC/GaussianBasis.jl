@@ -1,4 +1,4 @@
-function ao_2e3c(BS::BasisSet, auxBS::BasisSet, T::DataType = Float64)
+function ERI_2e3c(BS::BasisSet, auxBS::BasisSet, T::DataType = Float64)
 
     ATM_SLOTS = 6
     BAS_SLOTS = 8

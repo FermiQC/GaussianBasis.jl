@@ -1,4 +1,4 @@
-function sparse_ao_2e4c(BS::BasisSet, T::DataType = Float64, cutoff = 1e-12)
+function sparseERI_2e4c(BS::BasisSet, T::DataType = Float64, cutoff = 1e-12)
 
     # Number of unique integral elements
     N = Int((BS.nbas^2 - BS.nbas)/2) + BS.nbas
@@ -108,7 +108,7 @@ function sparse_ao_2e4c(BS::BasisSet, T::DataType = Float64, cutoff = 1e-12)
 end
 
 # This function is expensive and not optimized. Prefer using the sparse version
-function ao_2e4c(BS::BasisSet, T::DataType = Float64)
+function ERI_2e4c(BS::BasisSet, T::DataType = Float64)
 
     # Save a list containing the number of primitives for each shell
     num_prim = [Libcint.CINTcgtos_spheric(i-1, BS.lc_bas) for i = 1:BS.nshells]

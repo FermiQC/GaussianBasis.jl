@@ -1,4 +1,16 @@
-function ao_1e(BS::BasisSet, compute::String, T::DataType = Float64)
+function overlap(BS::BasisSet, T::DataType = Float64)
+    return ao1e(BS, "overlap", T)
+end
+
+function kinetic(BS::BasisSet, T::DataType = Float64)
+    return ao1e(BS, "kinetic", T)
+end
+
+function nuclear(BS::BasisSet, T::DataType = Float64)
+    return ao1e(BS, "nuclear", T)
+end
+
+function ao1e(BS::BasisSet, compute::String, T::DataType = Float64)
 
     if compute == "overlap"
         libcint_1e! =  cint1e_ovlp_sph!
@@ -6,6 +18,8 @@ function ao_1e(BS::BasisSet, compute::String, T::DataType = Float64)
         libcint_1e! =  cint1e_kin_sph!
     elseif compute == "nuclear"
         libcint_1e! =  cint1e_nuc_sph!
+    else
+        throw(ArgumentError("Invalid one-eletron integral name: $compute"))
     end
 
     # Pre allocate output
@@ -50,7 +64,19 @@ function ao_1e(BS::BasisSet, compute::String, T::DataType = Float64)
     return out
 end
 
-function ao_1e(BS1::BasisSet, BS2::BasisSet, compute::String, T::DataType = Float64)
+function overlap(BS1::BasisSet, BS2::BasisSet, T::DataType = Float64)
+    return ao1e(BS1, BS2, "overlap", T)
+end
+
+function kinetic(BS1::BasisSet, BS2::BasisSet, T::DataType = Float64)
+    return ao1e(BS1, BS2, "kinetic", T)
+end
+
+function nuclear(BS1::BasisSet, BS2::BasisSet, T::DataType = Float64)
+    return ao1e(BS1, BS2, "nuclear", T)
+end
+
+function ao1e(BS1::BasisSet, BS2::BasisSet, compute::String, T::DataType = Float64)
 
     if compute == "overlap"
         libcint_1e! =  cint1e_ovlp_sph!
@@ -58,6 +84,8 @@ function ao_1e(BS1::BasisSet, BS2::BasisSet, compute::String, T::DataType = Floa
         libcint_1e! =  cint1e_kin_sph!
     elseif compute == "nuclear"
         libcint_1e! =  cint1e_nuc_sph!
+    else
+        throw(ArgumentError("Invalid one-eletron integral name: $compute"))
     end
 
     ATM_SLOTS = 6

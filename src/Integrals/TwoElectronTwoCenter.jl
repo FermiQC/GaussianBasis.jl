@@ -1,4 +1,4 @@
-function ao_2e2c(BS::BasisSet, T::DataType = Float64)
+function ERI_2e2c(BS::BasisSet, T::DataType = Float64)
 
     # Pre allocate output
     out = zeros(T, BS.nbas, BS.nbas)

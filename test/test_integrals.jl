@@ -12,20 +12,20 @@ bs2 = BasisSet("sto-3g", atoms)
 
 @testset "One-Electron Integrals" begin
 
-    @test GaussianBasis.ao_1e(bs, "overlap") ≈ h5read(test_file, "overlap")
-    @test GaussianBasis.ao_1e(bs, "kinetic") ≈ h5read(test_file, "kinetic")
-    @test GaussianBasis.ao_1e(bs, "nuclear") ≈ h5read(test_file, "nuclear")
+    @test overlap(bs) ≈ h5read(test_file, "overlap")
+    @test kinetic(bs) ≈ h5read(test_file, "kinetic")
+    @test nuclear(bs) ≈ h5read(test_file, "nuclear")
 
-    @test GaussianBasis.ao_1e(bs, bs2, "overlap") ≈ h5read(test_file, "overlap_sto3g")
-    @test GaussianBasis.ao_1e(bs, bs2, "kinetic") ≈ h5read(test_file, "kinetic_sto3g")
-    @test GaussianBasis.ao_1e(bs, bs2, "nuclear") ./2 ≈ h5read(test_file, "nuclear_sto3g")
+    @test overlap(bs, bs2) ≈ h5read(test_file, "overlap_sto3g")
+    @test kinetic(bs, bs2) ≈ h5read(test_file, "kinetic_sto3g")
+    @test nuclear(bs, bs2) ./2 ≈ h5read(test_file, "nuclear_sto3g")
 end
 
 @testset "Two-Electron Four-Center" begin
 
-    @test GaussianBasis.ao_2e4c(bs) ≈ h5read(test_file, "denseERI")
+    @test ERI_2e4c(bs) ≈ h5read(test_file, "denseERI")
 
-    idx, data = GaussianBasis.sparse_ao_2e4c(bs)
+    idx, data = sparseERI_2e4c(bs)
 
     uniform = zeros(Int16, length(idx)*4)
     for i in eachindex(idx)
@@ -37,9 +37,9 @@ end
 end
 
 @testset "Two-Electron Three-Center" begin
-    @test GaussianBasis.ao_2e3c(bs, bs2) ≈ h5read(test_file, "Pqp_aux_sto3g")
+    @test ERI_2e3c(bs, bs2) ≈ h5read(test_file, "Pqp_aux_sto3g")
 end
 
 @testset "Two-Electron Two-Center" begin
-    @test GaussianBasis.ao_2e2c(bs) ≈ h5read(test_file, "J")
+    @test ERI_2e2c(bs) ≈ h5read(test_file, "J")
 end
