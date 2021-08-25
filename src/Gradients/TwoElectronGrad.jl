@@ -1,4 +1,4 @@
-function grad_ao2e4c(BS::BasisSet, iA, T::DataType = Float64)
+function ∇ERI_2e4c(BS::BasisSet, iA, T::DataType = Float64)
 
     A = BS.atoms[iA]
 
@@ -167,7 +167,7 @@ function grad_ao2e4c(BS::BasisSet, iA, T::DataType = Float64)
     return out
 end
 
-function ∇sparse_ao_2e4c(BS::BasisSet, iA, T::DataType = Float64, cutoff = 1e-12)
+function ∇sparseERI_2e4c(BS::BasisSet, iA, T::DataType = Float64, cutoff = 1e-12)
 
     A = BS.atoms[iA]
 
@@ -240,18 +240,10 @@ function ∇sparse_ao_2e4c(BS::BasisSet, iA, T::DataType = Float64, cutoff = 1e-
             for kl in ij:num_ij
                 k,l = ij_vals[kl]
 
-                if (i,j,k,l) == (1, 9, 0, 9)
-                    println("HERE")
-                end
-
                 # If all basis are centered at A, or none is, the derivative is zero
                 x_in_A = [x in Ashells for x = (i,j,k,l)]
                 if !any(x_in_A) || all(x_in_A)
                     continue
-                end
-
-                if (i,j,k,l) == (1, 9, 0, 9)
-                    println("HERE")
                 end
 
                 Lk, Ll = lvals[k+1], lvals[l+1]

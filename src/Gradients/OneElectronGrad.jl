@@ -1,11 +1,11 @@
-function grad_ao_1e(BS::BasisSet, compute::String, iA, T::DataType = Float64)
+function ∇1e(BS::BasisSet, compute::String, iA, T::DataType = Float64)
 
     if compute == "overlap"
         libcint_1e! =  cint1e_ipovlp_sph!
     elseif compute == "kinetic"
         libcint_1e! =  cint1e_ipkin_sph!
     elseif compute == "nuclear"
-        return grad_ao_nuc(BS, iA)
+        return ∇nuclear(BS, iA)
     end
 
     A = BS.atoms[iA]
@@ -60,8 +60,16 @@ function grad_ao_1e(BS::BasisSet, compute::String, iA, T::DataType = Float64)
     return out
 end
 
+function ∇overlap(BS::BasisSet, iA, T::DataType = Float64)
+    return ∇1e(BS, "overlap", iA, T)
+end
+
+function ∇kinetic(BS::BasisSet, iA, T::DataType = Float64)
+    return ∇1e(BS, "kinetic", iA, T)
+end
+
 # Needs improvement!!!!
-function grad_ao_nuc(BS::BasisSet, iA, T::DataType = Float64)
+function ∇nuclear(BS::BasisSet, iA, T::DataType = Float64)
 
     A = BS.atoms[iA]
 
