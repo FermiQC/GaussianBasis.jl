@@ -7,7 +7,7 @@ import Molecules: Atom, symbol
 export BasisFunction, BasisSet
 
 @doc raw"""
-    GaussianBasis.BasisFunction
+    BasisFunction
 
 Object representing a shell of Gaussian basis functions composed of ``N`` primitives: 
 
@@ -26,7 +26,7 @@ Object representing a shell of Gaussian basis functions composed of ``N`` primit
 # Examples
 
 ```julia
-julia> bf = GaussianBasis.BasisFunction(1, [1/√2, 1/√2], [5.0, 1.2])
+julia> bf = BasisFunction(1, [1/√2, 1/√2], [5.0, 1.2])
 P shell with 3 basis built from 2 primitive gaussians
 
 χ₁₋₁ =    0.7071067812⋅Y₁₋₁⋅r¹⋅exp(-5.0⋅r²)
