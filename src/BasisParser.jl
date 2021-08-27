@@ -13,7 +13,7 @@ const AMDict = Dict(
     )
 
 """
-    Fermi.GaussinBasis.read_basisset(bname::String, AtomSymbol::String)
+    GaussinBasis.read_basisset(bname::String, AtomSymbol::String)
 
 Returns an array of BasisFunction objects given an atom (AtomicSymbol) and basis set name (bname).
 """
@@ -61,9 +61,13 @@ end
 function extract_atom_from_bs(file_path::String, AtomSymbol::String)
 
     atom_pat = Regex("$(AtomSymbol)\\s+?0")
+    # This flag indicates if the atom was found within the file
     flag_atom = false
 
+    # Output is an array of strings (corresponding to the lines of the block matching the desired atom)
     out = String[]
+
+    # Iterate through the lines of the file until the atom is found
     for line in eachline(file_path)
 
         if occursin(atom_pat, line)
