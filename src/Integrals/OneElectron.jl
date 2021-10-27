@@ -1,3 +1,12 @@
+@doc raw"""
+    overlap(BS::BasisSet, T::DataType = Float64)
+
+Return a dense matrix (Array{T,2}) containing the overlap ⟨μ|ν⟩ of atomic basis functions
+
+```math
+\S_{\mu\nu} = \int \chi_\nu \chi_mu d\tau
+```
+"""
 function overlap(BS::BasisSet, T::DataType = Float64)
     return ao1e(BS, "overlap", T)
 end
