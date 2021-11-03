@@ -59,3 +59,26 @@ function ∇FD_sparseERI_2e4c(BS::BasisSet, A, i, h=1e-5)
 
     return Iplus, Xout
 end
+
+function ∇FD_ERI_2e3c(BS::BasisSet, auxBS::BasisSet, A, i, h=1e-5)
+
+    bs_plus, bs_minus = create_displacement(BS, A, i, h)
+    Abs_plus, Abs_minus = create_displacement(auxBS, A, i, h)
+
+    Xplus  = ERI_2e3c(bs_plus, Abs_plus)
+    Xminus = ERI_2e3c(bs_minus, Abs_minus)
+
+    return (Xplus - Xminus) ./ (2*h/Molecules.bohr_to_angstrom)
+
+end
+
+function ∇FD_ERI_2e2c(BS::BasisSet, A, i, h=1e-5)
+
+    bs_plus, bs_minus = create_displacement(BS, A, i, h)
+
+    Xplus = ERI_2e2c(bs_plus)
+    Xminus = ERI_2e2c(bs_minus)
+
+    return (Xplus - Xminus) ./ (2*h/Molecules.bohr_to_angstrom)
+
+end
