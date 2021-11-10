@@ -141,7 +141,6 @@ function ∇nuclear(BS::BasisSet, iA, T::DataType = Float64)
                     r = (1+Lij*(k-1)):(k*Lij)
                     ∇k = reshape(buf[r], Int(Li), Int(Lj))
                     out[k,I,J] .+= ∇k  # ⟨i'|Va|j ⟩
-                    out[k,J,I] .+= ∇k' # ⟨j |Va|i'⟩
                 end
             end
         end # inbounds
@@ -169,7 +168,6 @@ function ∇nuclear(BS::BasisSet, iA, T::DataType = Float64)
                     r = (1+Lij*(k-1)):(k*Lij)
                     ∇k = reshape(buf[r], Int(Li), Int(Lj))
                     out[k,I,J] .-= ∇k  # ⟨i'|∑Vc|j ⟩ c != a
-                    out[k,J,I] .-= ∇k' # ⟨j |∑Vc|i'⟩ c != a
                 end
             end
         end #inbounds
@@ -204,12 +202,17 @@ function ∇nuclear(BS::BasisSet, iA, T::DataType = Float64)
                     ∇k = buf[r]
                     out[k,I,J] += transpose(reshape(∇k, Int(Lj), Int(Li)))
                 end
-
-                out[:,J,I] .= permutedims(out[:,I,J], (1,3,2))
             end
         end #inbounds
         end #spawn
     end #sync
+
+    # Add transpose values
+    # This must be done outside the threaded loops
+    # to avoid race conditions. 
+    for k in 1:3
+        out[k,:,:] += out[k,:,:]'
+    end
 
     return out
 end
