@@ -11,7 +11,7 @@ bs = BasisSet("cc-pvdz", atoms)
     for iA = 1:5
         dS = ∇overlap(bs, iA)
         for k = 1:3
-            @test dS[k,:,:] ≈ ∇FD_overlap(bs, iA, k)
+            @test dS[:,:,k] ≈ ∇FD_overlap(bs, iA, k)
         end
     end
 end
@@ -20,7 +20,7 @@ end
     for iA = 1:5
         dT = ∇kinetic(bs, iA)
         for k = 1:3
-            @test dT[k,:,:] ≈ ∇FD_kinetic(bs, iA, k)
+            @test dT[:,:,k] ≈ ∇FD_kinetic(bs, iA, k)
         end
     end
 end
@@ -29,7 +29,7 @@ end
     for iA = 1:5
         dV = ∇nuclear(bs, iA)
         for k = 1:3
-            @test dV[k,:,:] ≈ ∇FD_nuclear(bs, iA, k)
+            @test dV[:,:,k] ≈ ∇FD_nuclear(bs, iA, k)
         end
     end
 end

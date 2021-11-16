@@ -1,4 +1,14 @@
 function ∇1e(BS::BasisSet, compute::String, iA, T::DataType = Float64)
+    # Pre allocate output
+    out = zeros(T, BS.nbas, BS.nbas, 3)
+    return ∇1e!(out, BS, compute, iA, T)
+end
+
+function ∇1e!(out, BS::BasisSet, compute::String, iA, T::DataType = Float64)
+
+    if size(out) != (BS.nbas, BS.nbas, 3)
+        throw(DimensionMismatch("Size of the output array needs to be (nbas, nbas, 3)"))
+    end
 
     if compute == "overlap"
         libcint_1e! =  cint1e_ipovlp_sph!
@@ -9,9 +19,6 @@ function ∇1e(BS::BasisSet, compute::String, iA, T::DataType = Float64)
     end
 
     A = BS.atoms[iA]
-
-    # Pre allocate output
-    out = zeros(T, 3, BS.nbas, BS.nbas)
 
     # Get shell index (s0) where basis of the desired atom start
     s0 = 0
@@ -55,11 +62,11 @@ function ∇1e(BS::BasisSet, compute::String, iA, T::DataType = Float64)
                 for k in 1:3
                     r = (1+Lij*(k-1)):(k*Lij)
                     ∇k = buf[r]
-                    out[k,I,J] .= -reshape(∇k, Int(Li), Int(Lj))
+                    out[I,J,k] .-= reshape(∇k, Int(Li), Int(Lj))
                 end
 
                 # Copy over the transpose
-                out[:,J,I] .= permutedims(out[:,I,J], (1,3,2))
+                out[J,I,:] .+= permutedims(out[I,J,:], (2,1,3))
             end
         end #inbounds
         end #spawn 
@@ -71,12 +78,29 @@ function ∇overlap(BS::BasisSet, iA, T::DataType = Float64)
     return ∇1e(BS, "overlap", iA, T)
 end
 
+function ∇overlap!(out, BS::BasisSet, iA, T::DataType = Float64)
+    return ∇1e!(out, BS, "overlap", iA, T)
+end
+
 function ∇kinetic(BS::BasisSet, iA, T::DataType = Float64)
     return ∇1e(BS, "kinetic", iA, T)
 end
 
-# Needs improvement!!!!
+function ∇kinetic!(out, BS::BasisSet, iA, T::DataType = Float64)
+    return ∇1e!(out, BS, "kinetic", iA, T)
+end
+
 function ∇nuclear(BS::BasisSet, iA, T::DataType = Float64)
+    # Pre allocate output
+    out = zeros(T, BS.nbas, BS.nbas, 3)
+    return ∇nuclear!(out, BS, iA, T)
+end
+
+function ∇nuclear!(out, BS::BasisSet, iA, T::DataType = Float64)
+
+    if size(out) != (BS.nbas, BS.nbas, 3)
+        throw(DimensionMismatch("Size of the output array needs to be (nbas, nbas, 3)"))
+    end
 
     A = BS.atoms[iA]
 
@@ -111,9 +135,6 @@ function ∇nuclear(BS::BasisSet, iA, T::DataType = Float64)
         end
     end
     
-    # Pre allocate output
-    out = zeros(T, 3, BS.nbas, BS.nbas)
-
     lvals = [Libcint.CINTcgtos_spheric(i-1, BS.lc_bas) for i = 1:BS.nshells]
     ao_offset = [sum(lvals[1:(i-1)]) for i = 1:BS.nshells]
     Lmax = maximum(lvals)
@@ -140,7 +161,7 @@ function ∇nuclear(BS::BasisSet, iA, T::DataType = Float64)
                 for k in 1:3
                     r = (1+Lij*(k-1)):(k*Lij)
                     ∇k = reshape(buf[r], Int(Li), Int(Lj))
-                    out[k,I,J] .+= ∇k  # ⟨i'|Va|j ⟩
+                    out[I,J,k] .+= ∇k  # ⟨i'|Va|j ⟩
                 end
             end
         end # inbounds
@@ -167,7 +188,7 @@ function ∇nuclear(BS::BasisSet, iA, T::DataType = Float64)
                 for k in 1:3
                     r = (1+Lij*(k-1)):(k*Lij)
                     ∇k = reshape(buf[r], Int(Li), Int(Lj))
-                    out[k,I,J] .-= ∇k  # ⟨i'|∑Vc|j ⟩ c != a
+                    out[I,J,k] .-= ∇k  # ⟨i'|∑Vc|j ⟩ c != a
                 end
             end
         end #inbounds
@@ -193,14 +214,14 @@ function ∇nuclear(BS::BasisSet, iA, T::DataType = Float64)
                 for k in 1:3
                     r = (1+Lij*(k-1)):(k*Lij)
                     ∇k = buf[r]
-                    out[k,I,J] -= reshape(∇k, Int(Li), Int(Lj))
+                    out[I,J,k] .-= reshape(∇k, Int(Li), Int(Lj))
                 end
 
                 cint1e_ipnuc_sph!(buf, Cint.([j,i]), lc_atoms_A, BS.natoms, BS.lc_bas, BS.nbas, BS.lc_env)
                 for k in 1:3
                     r = (1+Lij*(k-1)):(k*Lij)
                     ∇k = buf[r]
-                    out[k,I,J] += transpose(reshape(∇k, Int(Lj), Int(Li)))
+                    out[I,J,k] .+= transpose(reshape(∇k, Int(Lj), Int(Li)))
                 end
             end
         end #inbounds
@@ -211,7 +232,7 @@ function ∇nuclear(BS::BasisSet, iA, T::DataType = Float64)
     # This must be done outside the threaded loops
     # to avoid race conditions. 
     for k in 1:3
-        out[k,:,:] += out[k,:,:]'
+        out[:,:,k] .+= out[:,:,k]'
     end
 
     return out

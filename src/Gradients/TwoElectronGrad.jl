@@ -1,9 +1,16 @@
 function ∇ERI_2e4c(BS::BasisSet, iA, T::DataType = Float64)
-
-    A = BS.atoms[iA]
-
     # Pre allocate output
     out = zeros(T, 3, BS.nbas, BS.nbas, BS.nbas, BS.nbas)
+    return ∇ERI_2e4c!(out, BS, iA, T)
+end
+
+function ∇ERI_2e4c!(out, BS::BasisSet, iA, T::DataType = Float64)
+
+    if size(out) != (3, BS.nbas, BS.nbas, BS.nbas, BS.nbas)
+        throw(BoundsError("Size of the output array incompatible with the number of basis functions."))
+    end
+
+    A = BS.atoms[iA]
 
     # Get shell index (s0) where basis of the desired atom start
     s0 = 0
