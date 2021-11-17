@@ -61,7 +61,7 @@ function ∇1e!(out, BS::BasisSet, compute::String, iA, T::DataType = Float64)
                 # Get strides for each cartesian
                 for k in 1:3
                     r = (1+Lij*(k-1)):(k*Lij)
-                    ∇k = buf[r]
+                    @views ∇k = buf[r]
                     out[I,J,k] .-= reshape(∇k, Int(Li), Int(Lj))
                 end
 
