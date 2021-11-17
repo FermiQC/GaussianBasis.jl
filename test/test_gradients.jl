@@ -39,18 +39,20 @@ end
         for iA = 1:5
             dERI = ∇ERI_2e4c(bs, iA)
             for k = 1:3
-                @test dERI[k,:,:,:,:] ≈ ∇FD_ERI_2e4c(bs, iA, k)
+                @test dERI[:,:,:,:,k] ≈ ∇FD_ERI_2e4c(bs, iA, k)
             end
         end
     end
 
     #@testset "Sparse" begin
-        #for iA = 1:5
-            #idx, ∇x, ∇y, ∇z = ∇sparseERI_2e4c(bs, iA)
+    #    for iA = 1:5
+    #        idx, ∇q... = ∇sparseERI_2e4c(bs, iA)
             ## Make sure indexes are sorted by index4
-            #@assert issorted(idx, by = x -> GaussianBasis.index4(x[1], x[2], x[3], x[4]))
-            #for k = 1:3
-                #fd_idx, fd_data = ∇FD_sparseERI_2e4c(bs, iA, k)
+    #        for k = 1:3
+    #            ∇k = ∇q[k]
+    #            fd_data = ∇FD_ERI_2e4c(bs, iA, k)
+    #           for i in idx
+
                 #@assert issorted(fd_idx, by = x -> GaussianBasis.index4(x[1], x[2], x[3], x[4]))
                 #@test dIDX == fd_idx
             #end
