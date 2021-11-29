@@ -1,3 +1,32 @@
+function SinD(S, D, verbose = false)
+    Si = S[1]
+    Sx = S[2]
+    Sy = S[3]
+    Sz = S[4]
+
+    Dxs = D[:,:,:,:,1]
+    Dys = D[:,:,:,:,2]
+    Dzs = D[:,:,:,:,3]
+    for i in eachindex(Si)
+        idx = Si[i] .+ 1
+        x = Sx[i]
+        y = Sy[i]
+        z = Sz[i]
+        Dx = Dxs[idx...]
+        Dy = Dys[idx...]
+        Dz = Dzs[idx...]
+
+        for (k,Dk) in [(x,Dx), (y,Dy), (z,Dz)]
+            if abs(k - Dk) > 1e-10
+                println("$idx diff found: $k against $Dk")
+                return false
+            end
+        end
+        verbose ? println("$idx OK") : nothing
+    end
+    return true
+end
+
 atoms = Molecules.parse_string("""
 C   -2.131551124300    2.286168823700    0.000000000000
 H   -1.061551124300    2.286168823700    0.000000000000
@@ -44,54 +73,11 @@ end
         end
     end
 
-    #@testset "Sparse" begin
-    #    for iA = 1:5
-    #        idx, ∇q... = ∇sparseERI_2e4c(bs, iA)
-            ## Make sure indexes are sorted by index4
-    #        for k = 1:3
-    #            ∇k = ∇q[k]
-    #            fd_data = ∇FD_ERI_2e4c(bs, iA, k)
-    #           for i in idx
-
-                #@assert issorted(fd_idx, by = x -> GaussianBasis.index4(x[1], x[2], x[3], x[4]))
-                #@test dIDX == fd_idx
-            #end
-        #end
-    #end
+    @testset "Sparse" begin
+        for iA = 1:5
+            sparse = ∇sparseERI_2e4c(bs, iA)
+            dense = ∇ERI_2e4c(bs, iA)
+            @test SinD(sparse, dense) 
+        end
+    end
 end
-
-#function compare_sparse_arrays(id1, d1, id2, d2)
-#
-#    l1 = length(id1)    
-#    l2 = length(id2)    
-#
-#    i = 1
-#    j = 1
-#
-#    while l1 > i && l2 > j
-#        i4 = GaussianBasis.index4(id1[i]...)
-#        j4 = GaussianBasis.index4(id2[j]...)
-#        if i4 == j4
-#            if d1[i] ≈ d2[j]
-#                i += 1
-#                j += 1
-#            else
-#                return false
-#            end
-#        elseif i4 < j4
-#            if d1[i] ≈ 0
-#                i += 1
-#            else
-#                return false    
-#            end
-#        elseif i4 > j4
-#            if d2[i] ≈ 0
-#                j += 1
-#            else
-#                return false    
-#            end
-#        end
-#    end
-#
-#    return true
-#end
