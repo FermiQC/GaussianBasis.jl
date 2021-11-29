@@ -31,10 +31,10 @@ function ∇ERI_2e4c!(out, BS::BasisSet, iA, T::DataType = Float64)
         end
     end
 
-    lvals = [Libcint.CINTcgtos_spheric(i-1, BS.lc_bas) for i = 1:BS.nshells]
-    ao_offset = [sum(lvals[1:(i-1)]) for i = 1:BS.nshells]
-    Lmax = maximum(lvals)
-    buf = zeros(Cdouble, 3*Lmax^4)
+    bas_per_shell = [Libcint.CINTcgtos_spheric(i-1, BS.lc_bas) for i = 1:BS.nshells]
+    ao_offset = [sum(bas_per_shell[1:(i-1)]) for i = 1:BS.nshells]
+    NBmax = maximum(bas_per_shell)
+    buf = zeros(Cdouble, 3*NBmax^4)
 
     # Find unique (i,j,k,l) combinations given permutational symmetry
     unique_idx = NTuple{4,Int16}[]
@@ -64,10 +64,10 @@ function ∇ERI_2e4c!(out, BS::BasisSet, iA, T::DataType = Float64)
             continue
         end
 
-        Li = lvals[i+1]
-        Lj = lvals[j+1]
-        Lk = lvals[k+1]
-        Ll = lvals[l+1]
+        Li = bas_per_shell[i+1]
+        Lj = bas_per_shell[j+1]
+        Lk = bas_per_shell[k+1]
+        Ll = bas_per_shell[l+1]
         Lijkl = Li*Lj*Lk*Ll
 
         ioff = ao_offset[i+1]
@@ -174,7 +174,7 @@ function ∇ERI_2e4c!(out, BS::BasisSet, iA, T::DataType = Float64)
     return out
 end
 
-function ∇sparseERI_2e4c(BS::BasisSet, iA, T::DataType = Float64, cutoff = 1e-12)
+function ∇sparseERI_2e4c(BS::BasisSet, iA, T::DataType = Float64)
 
     A = BS.atoms[iA]
 
@@ -187,7 +187,7 @@ function ∇sparseERI_2e4c(BS::BasisSet, iA, T::DataType = Float64, cutoff = 1e-
     ∇y = zeros(T, N)
     ∇z = zeros(T, N)
     indexes = Array{NTuple{4,Int16}}(undef, N)
-    mask = Array{Bool}(undef, N) .= false
+    mask = repeat([false], N) 
 
     # Get shell index (s0) where basis of the desired atom start
     s0 = 0
@@ -209,12 +209,12 @@ function ∇sparseERI_2e4c(BS::BasisSet, iA, T::DataType = Float64, cutoff = 1e-
         end
     end
 
-    # Pre compute a list of angular momentum numbers (l) for each shell
-    lvals = [Libcint.CINTcgtos_spheric(i-1, BS.lc_bas) for i = 1:BS.nshells]
-    Lmax = maximum(lvals)
+    # Pre compute a list of number of basis for each shell (2l +1)
+    bas_per_shell = [Libcint.CINTcgtos_spheric(i-1, BS.lc_bas) for i = 1:BS.nshells]
+    NBmax = maximum(bas_per_shell)
 
     # Offset list for each shell, used to map shell index to AO index
-    ao_offset = [sum(lvals[1:(i-1)]) - 1 for i = 1:BS.nshells]
+    ao_offset = [sum(bas_per_shell[1:(i-1)]) - 1 for i = 1:BS.nshells]
 
     # Unique shell pairs with i < j
     num_ij = Int((BS.nshells^2 - BS.nshells)/2) + BS.nshells
@@ -229,9 +229,8 @@ function ∇sparseERI_2e4c(BS::BasisSet, iA, T::DataType = Float64, cutoff = 1e-
         end
     end
 
-    buf_arrays = [zeros(Cdouble, 3*Lmax^4) for _ = 1:Threads.nthreads()]
+    buf_arrays = [zeros(Cdouble, 3*NBmax^4) for _ = 1:Threads.nthreads()]
     
-    println(ij_vals)
     # i,j,k,l => Shell indexes starting at zero
     # I, J, K, L => AO indexes starting at one
     for ij in eachindex(ij_vals)
@@ -240,7 +239,7 @@ function ∇sparseERI_2e4c(BS::BasisSet, iA, T::DataType = Float64, cutoff = 1e-
         #@inbounds begin
             buf = buf_arrays[Threads.threadid()]
             i,j = ij_vals[ij]
-            Li, Lj = lvals[i+1], lvals[j+1]
+            Li, Lj = bas_per_shell[i+1], bas_per_shell[j+1]
             Lij = Li*Lj
             ioff = ao_offset[i+1]
             joff = ao_offset[j+1]
@@ -253,12 +252,13 @@ function ∇sparseERI_2e4c(BS::BasisSet, iA, T::DataType = Float64, cutoff = 1e-
                     continue
                 end
 
-                Lk, Ll = lvals[k+1], lvals[l+1]
+                Lk, Ll = bas_per_shell[k+1], bas_per_shell[l+1]
                 Lijk = Lij*Lk
                 Lijkl = Lijk*Ll
                 koff = ao_offset[k+1]
                 loff = ao_offset[l+1]
 
+                # NOTE: Using loops instead of array operations could make this more efficient
                 # Compute ERI
                 bufx = zeros(Cdouble, Int(Li), Int(Lj), Int(Lk), Int(Ll))
                 bufy = zeros(Cdouble, Int(Li), Int(Lj), Int(Lk), Int(Ll))
@@ -314,8 +314,6 @@ function ∇sparseERI_2e4c(BS::BasisSet, iA, T::DataType = Float64, cutoff = 1e-
 
                                 IJ = (J * (J + 1)) >> 1 + I
 
-                                #KL < IJ ? continue : nothing # This restriction does not work... idk why 
-
                                 idx = index2(IJ,KL) + 1
                                 ∇x[idx] = -bufx[is + bjkl]
                                 ∇y[idx] = -bufy[is + bjkl]
@@ -334,7 +332,5 @@ function ∇sparseERI_2e4c(BS::BasisSet, iA, T::DataType = Float64, cutoff = 1e-
         #end #inbounds
         #end #spawn
     end #sync
-    #mask = abs.(out) .> cutoff
-    #return indexes[mask], out[mask]
     return indexes[mask], ∇x[mask], ∇y[mask], ∇z[mask]
 end
