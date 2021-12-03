@@ -27,3 +27,9 @@ Manifest.toml
 *.gbs
 deps/*.so
 deps/lib
+
+# Dev scripts
+devs*
+
+# Coverage files
+*lcov.info
