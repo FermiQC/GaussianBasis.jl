@@ -58,6 +58,11 @@ function read_basisset(bname::String, AtomSymbol::String)
     return out
 end
 
+"""
+    GaussinBasis.extract_atom_from_bs(file_path::String, AtomSymbol::String)
+
+Extract the portion of the basis set file (file_path) relevant for the given atom in AtomSymbol.
+"""
 function extract_atom_from_bs(file_path::String, AtomSymbol::String)
 
     atom_pat = Regex("$(AtomSymbol)\\s+?0")
@@ -88,6 +93,12 @@ function extract_atom_from_bs(file_path::String, AtomSymbol::String)
     end
 end
 
+"""
+    GaussinBasis.basis_from_string(bstring::String)
+
+From a String block representing a Basis Function in gbs format, produces a BasisFunction object.
+For the special case of two basis being described within the same block (e.g. SP blocks) see `two_basis_from_string`
+"""
 function basis_from_string(bstring::String)
     lines = split(strip(bstring), "\n")
     head = lines[1]
@@ -119,6 +130,12 @@ function basis_from_string(bstring::String)
     return BasisFunction(l, coef, exp)
 end
 
+"""
+    GaussinBasis.two_basis_from_string(bstring::String)
+
+From a String block representing two Basis Function (e.g. SP blocks) in gbs format, produces two BasisFunction objects.
+For the case of a single basis being described within the block see `basis_from_string`
+"""
 function two_basis_from_string(bstring::String)
     lines = split(strip(bstring), "\n")
     head = lines[1]

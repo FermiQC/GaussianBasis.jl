@@ -7,21 +7,17 @@ import Molecules: Atom, symbol
 export BasisFunction, BasisSet
 
 @doc raw"""
-    BasisFunction
+     BasisFunction
 
-Object representing a shell of Gaussian basis functions composed of ``N`` primitives: 
-
-```math
-\chi_{l,m} = \sum_i^N C_i r^{l}e^{-\zeta_i r^2} Y_{l,m}(\theta,\phi)
-```
+Basis object holding basis function information.
 
 # Fields
 
-| Name    | Type | Description |
-|:--------|:------|:-----------------------------------------------------------|
-|`l`      |`Int32`            | Angular momentum number (e.g. 0, 1, 2 for S, P, D...)      |
-|`coef`   |`Array{Float64,1}` | Array with coefficients (``C_i``) for each primitive       |
-|`exp`    |`Array{Float64,1}` | Array with exponents (``\zeta_i``) for each primitive      |
+| Name        | Type                               |   Description |
+|:------------|:-----------------------------------|:-----------------------------------------------------------|
+|`l`          | `Cint`                             | Angular momentum number |
+|`coef`       | `Vector{Cdouble}`                  | Array holding expansion coefficients for the primitives |
+|`exp`        | `Vector{Cdouble}`                  | Array holding exponents for primitives          |
 
 # Examples
 
@@ -41,8 +37,8 @@ P shell with 3 basis built from 2 primitive gaussians
 """
 struct BasisFunction
     l::Cint
-    coef::Array{Cdouble,1}
-    exp::Array{Cdouble,1}
+    coef::Vector{Cdouble}
+    exp::Vector{Cdouble}
 end
 
 include("BasisParser.jl")
