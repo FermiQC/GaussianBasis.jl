@@ -1,3 +1,5 @@
+# Test if elements in the sparse array (S) are present
+# in the dense array (D)
 function SinD(S, D, verbose = false)
     Si = S[1]
     Sx = S[2]
