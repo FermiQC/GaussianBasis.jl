@@ -1,6 +1,6 @@
 # GaussianBasis.jl
 [![CI](https://github.com/FermiQC/GaussianBasis.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/FermiQC/GaussianBasis.jl/actions/workflows/CI.yml)
-[![codecov](https://codecov.io/gh/FermiQC/GaussianBasis.jl/branch/master/graph/badge.svg?token=JNouJPwoHm)](https://codecov.io/gh/FermiQC/GaussianBasis.jl)
+[![codecov](https://codecov.io/gh/FermiQC/GaussianBasis.jl/branch/main/graph/badge.svg?token=JNouJPwoHm)](https://codecov.io/gh/FermiQC/GaussianBasis.jl)
 
 GaussianBasis offers a high-level wrap around the integral library [libcint](https://github.com/sunqm/libcint). Install it by simply runnig
 
