@@ -85,6 +85,11 @@ struct BasisSet
     lc_env::Array{Cdouble,1}
 end
 
+function BasisSet(name::String, str_atoms::String)
+    atoms = Molecules.parse_string(str_atoms)
+    BasisSet(name, atoms)
+end
+
 function BasisSet(name::String, atoms::Vector{T}) where T <: Atom
 
     basis = Vector{BasisFunction}[]
