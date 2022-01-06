@@ -64,7 +64,7 @@ julia> shells = [
     [s],  # A s function on the first hydrogen
     [s,p] # One s and one p function on the second hydrogen
 ]
-julia> BasisSet(h2, "UnequalHydrogens", shells)
+julia> BasisSet("UnequalHydrogens", h2, shells)
 UnequalHydrogens Basis Set
 Number of shells: 3
 Number of basis:  5
