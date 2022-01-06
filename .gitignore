@@ -23,11 +23,6 @@ docs/site/
 # environment.
 Manifest.toml
 
-# Basis set files
-*.gbs
-deps/*.so
-deps/lib
-
 # Dev scripts
 devs*
 

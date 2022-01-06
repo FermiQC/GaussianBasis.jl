@@ -1,4 +1,4 @@
-const LIBPATH = joinpath(@__DIR__, "../deps/lib")
+const LIBPATH = joinpath(@__DIR__, "../lib")
 const AM_pat = r"([SPDFGHI]{1,2})\s+?(\d++)"
 const prim_pat = r"([+-]?\d*?\.\d+[D+-]{0,2}\d\d)\s+?([+-]?\d*?\.\d+[D+-]{0,2}+\d\d)"
 const prim_pat3 = r"([+-]?\d*?\.\d+[D+-]{0,2}\d\d)\s+?([+-]?\d*?\.\d+[D+-]{0,2}+\d\d)\s+?([+-]?\d*?\.\d+[D+-]{0,2}+\d\d)"
