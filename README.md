@@ -44,19 +44,22 @@ julia> overlap(bset)
 
 | Function      | Description | Formula |
 |---------------|-------------|:-------:|
-| `overlap`       | Overlap between two basis functions | $\langle \chi_i \| \chi_j \rangle$|
-| `kinetic`       | Kinetic integral | $\frac{1}{2}\langle \chi_i \| \vec{p} \cdot \vec{p}  \| \chi_j \rangle$|
-| `nuclear`       | Nuclear attraction integral  | $\sum_A\langle \chi_i \|\frac{Z_A}{\|\vec{R}_A - \vec{r}\|} \|\chi_j \rangle$|
-| `ERI_2e4c`       | Electron repulsion integral - returns a full rank-4 tensor! | $\left( \chi_i \chi_j \| \chi_k \chi_l\right)$|
-| `sparseERI_2e4c`       | Electron repulsion integral - returns non-zero elements along with a index tuple | $\left( \chi_i \chi_j \| \chi_k \chi_l\right)$|
-| `ERI_2e3c`       | Electron repulsion integral over three centers. **Note:** this function requires another basis set as the second argument (that is the auxiliary basis set in [Density Fitting](http://vergil.chemistry.gatech.edu/notes/df.pdf)). It must be called as `ERI_2c3c(bset, aux)` | $\left( \chi_i \chi_j \| P_k\right)$|
-| `ERI_2e2c`       | Electron repulsion integral over two centers  | $\left( \chi_i \| \chi_j\right)$|
+| `overlap`       | Overlap between two basis functions | ![S](assets/ovlp.png)|
+| `kinetic`       | Kinetic integral | ![T](assets/kin.png)|
+| `nuclear`       | Nuclear attraction integral  | ![V](assets/nuc.png)|
+| `ERI_2e4c`       | Electron repulsion integral - returns a full rank-4 tensor! | ![ERI](assets/4cERI.png)|
+| `sparseERI_2e4c`       | Electron repulsion integral - returns non-zero elements along with a index tuple | ![sERI](assets/4cERI.png)|
+| `ERI_2e3c`       | Electron repulsion integral over three centers. **Note:** this function requires another basis set as the second argument (that is the auxiliary basis set in [Density Fitting](http://vergil.chemistry.gatech.edu/notes/df.pdf)). It must be called as `ERI_2c3c(bset, aux)` | ![3cERI](assets/3cERI.png)|
+| `ERI_2e2c`       | Electron repulsion integral over two centers  | ![2cERI](assets/2cERI.png)|
 
 # Advanced Usage
 
 ## Basis Functions
-`BasisFunction` object is the elementary data type within this package. In general, a basis function is $\chi_{m,l} = \sum_n c_n \cdot Y_{m,l} \cdot r^l \cdot e^{-\xi_n r^2}$
-where the sum goes over primitive functions. A `BasisFunction` object contains the data to reproduce the mathematical object, i.e. angular momentum number ($l$), expansion coefficients ($c_n$), and exponential factors ($\xi_n$). We can create a basis function by passing these arguments orderly:
+`BasisFunction` object is the elementary data type within this package. In general, a basis function is 
+
+![BF](assets/bf.png)
+
+where the sum goes over primitive functions. A `BasisFunction` object contains the data to reproduce the mathematical object, i.e. the angular momentum number (***l***), expansion coefficients (***c<sub>n</sub>***), and exponential factors (***&xi;<sub>n</sub>***). We can create a basis function by passing these arguments orderly:
 ```julia
 julia> bf = BasisFunction(1, [1/√2, 1/√2], [5.0, 1.2])
 P shell with 3 basis built from 2 primitive gaussians
@@ -128,7 +131,7 @@ julia> shells = [
     [s,p] # One s and one p function on the second hydrogen
 ];
 ```
-Note that the "mapping" is simply done by the corresponding ordering, the $n$-th entry in `shells` is attributed to the $n$-th Atom in `h2`. Finally, we can create the basis set:
+Note that the "mapping" is simply achieved by the ordering, the $n$-th entry in `shells` is attributed to the $n$-th Atom in `h2`. Finally, we can create the basis set:
 ```julia
 julia> bset = BasisSet("UnequalHydrogens", h2, shells)
 UnequalHydrogens Basis Set
@@ -147,5 +150,150 @@ true
 julia> bset.atoms == h2
 true
 ```
-Other fields (such as `bset.lc_env`) are mostly chewed up information for libcint. You can learn more about them [here](https://github.com/sunqm/libcint/blob/master/doc/program_ref.pdf).
+Other fields (such as `bset.lc_env`) are mostly chewed up information for `libcint`. You can learn more about them [here](https://github.com/sunqm/libcint/blob/master/doc/program_ref.pdf).
 
+### Integrals over different basis sets
+
+Functions such as `ERI_2e3c` require two basis set as arguments. Looking at the corresponding equation
+![3cERI](assets/3cERI.png) we see two basis set: ***&Chi;*** and ***P***. If your first basis set has 2 basis functions and the second has 4, your output array is a 2x2x4 tensor. For example
+```julia
+julia> b1 = BasisSet("sto-3g", """
+              H        0.00      0.00     0.00                 
+              H        0.76      0.00     0.00""")
+julia> b2 = BasisSet("3-21g", """
+              H        0.00      0.00     0.00                 
+              H        0.76      0.00     0.00""")
+julia> ERI_2e3c(b1,b2)
+2×2×4 Array{Float64, 3}:
+[:, :, 1] =
+ 3.26737  1.85666
+ 1.85666  2.44615
+
+[:, :, 2] =
+ 6.18932  3.83049
+ 3.83049  5.60161
+
+[:, :, 3] =
+ 2.44615  1.85666
+ 1.85666  3.26737
+
+[:, :, 4] =
+ 5.60161  3.83049
+ 3.83049  6.18932
+ ```
+One electron integrals can also be employed with different basis set. 
+```julia
+julia> overlap(b1, b2)
+2×4 Matrix{Float64}:
+ 0.914077  0.899458  0.473201  0.708339
+ 0.473201  0.708339  0.914077  0.899458
+
+julia> kinetic(b1, b2)
+2×4 Matrix{Float64}:
+ 1.03401  0.314867  0.20091  0.203163
+ 0.20091  0.203163  1.03401  0.314867
+```
+This can be useful when working with projections from one basis set onto another. 
+
+### Calling raw libcint functions
+
+If one desires, it is possible to directly call the simplest/lowest-level wrap over libcint functions. This can be useful when you don't want the full array, but only few specific shell pairs. The list of function currently exposed within `GaussianBasis` can be found by 
+```julia
+julia> names(GaussianBasis.Libcint)
+12-element Vector{Symbol}:
+ :Libcint
+ :cint1e_ipkin_sph!
+ :cint1e_ipnuc_sph!
+ :cint1e_ipovlp_sph!
+ :cint1e_kin_sph!
+ :cint1e_nuc_sph!
+ :cint1e_ovlp_sph!
+ :cint1e_r_sph!
+ :cint2c2e_sph!
+ :cint2e_ip1_sph!
+ :cint2e_sph!
+ :cint3c2e_sph!
+ ```
+ Otherwise you can check the file `GaussianBasis/src/Libcint.jl`. If you need to expose a new function you should do it here, don't forget to export the function afterwards!
+
+ > A note on conventions: original `libcint` functions do not have **!** at the end of their names, we add this to comply with Julia practices. For example, `cint1e_ovlp_sph` is exposed as `cint1e_ovlp_sph!`. The **!** indicates that the function is a [mutating function](https://docs.julialang.org/en/v1/manual/style-guide/#Use-naming-conventions-consistent-with-Julia-base/).
+
+ All functions are called with the same type signature. We shall use the overlap functions as the example here:
+
+`cint1e_ovlp_sph!(buf, shls, atm, natm, bas, nbas, env)`
+
+A more detailed description of each argument in found in the [`libcint` documentation](https://github.com/sunqm/libcint/blob/master/doc/program_ref.pdf). We offer here an overview
+
+- `buf` type: `Array{Cdouble}`
+
+Array where integral results are written into, it is understood as a linear array (though, it does not need to be passed as such); hence, you may need reshape to get what you want. 
+
+- `shls` type `Array{Cint}`
+
+Indicates the shell pair for which the integral must be computed. See example below.
+
+- `atom` type: `Array{Cint}`
+
+Holds information about atoms, mapping onto values in `env`.
+
+- `natom` type `Cint`
+
+Number of atoms
+
+- `bas` type: `Array{Cint}`
+
+Holds information about the basis set, mapping onto values in `env`.
+
+- `nbas` type: `Cint`
+
+Number of basis functions.
+
+> Note that, **basis functions** here refers to the *actual* number of functions, e.g. for a system with *s* and *p* functions, there are 4 basis functions (because the *p* shell contains 3 basis functions). This can be confusing since the `BasisFunction` object in `GaussianBasis` actually holds information of the whole shell. Such is life.
+
+- `env` type: `Array{Cdouble}`
+
+Holds all the `Cdouble` (`Float64`) data. The `atm` and `bas` arrays tell you how to read chunks of this array.
+
+#### Example
+
+The `BasisSet` object contains the information formatted as required by `libcint`. Given a `BasisSet` object named `bset`, `atm`, `bas`, and `env` can be fetched through the fields `bset.lc_atoms`, `bset.lc_bas`, and `bset.lc_env`, respectively. Thus, it is recommended that you just use this object to call these functions. Let us work out an example for water using sto-3g.
+```julia
+bset = BasisSet("sto-3g", """
+     O     1.2091536548    1.7664118189   -0.0171613972
+     H     2.1984800075    1.7977100627    0.0121161719
+     H     0.9197881882    2.4580185570    0.6297938832
+""")
+sto-3g Basis Set
+Number of shells: 5
+Number of basis:  7
+
+O: 1s 2s 1p 
+H: 1s 
+H: 1s
+```
+Notice how the **shells** are ordered: O 1s, O 2s, O 1p, H 1s, H 1s
+
+Suppose we want the overlap over O 1p and H 1s. Since p contains 3 functions, we need a 3x1 output array. The argument `shls` is used to indicate our choice of shells, in this case `shls = Cint.([2,3])`
+
+> We start counting from zero since this is a C call.
+
+```julia
+julia> buf = zeros(3,1)
+julia> GaussianBasis.Libcint.cint1e_ovlp_sph!(buf, Cint.([2,3]), 
+bset.lc_atoms, bset.natoms, bset.lc_bas, 
+bset.nbas, bset.lc_env)
+julia> buf
+3×1 Matrix{Float64}:
+ 0.3813773519418131
+ 0.012065221257168891
+ 0.011286267412344286
+```
+Compare that with the **S** matrix:
+```julia
+julia> S = overlap(bset)
+julia> S[3:5, 5]
+julia> S[3:5, 6] ≈ buf
+true
+julia> S[6, 3:5] ≈ buf
+true
+```
