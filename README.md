@@ -92,11 +92,11 @@ julia> bf.exp
 
  ## Basis Set
 
- `BasisSet` objects are the main ingredients for integrals. They can be created in a number of ways:
+ The `BasisSet` object is the main ingredient for integrals. It can be created in a number of ways:
 
- - The "highest level" one: using two string arguments, one for the basis set name and another for the XYZ file. See *Basis Usage*.
+ - The highest level approach takes two strings as arguments, one for the basis set name and another for the XYZ file. See *Basis Usage*.
 
- - Next, you can pass your vector of `Atom` structures instead of an XYZ string. `GaussianBasis` uses the `Atom` structure from [Molecules.jl](https://github.com/FermiQC/GaussianBasis.jl).
+ - Youcan pass your vector of `Atom` structures instead of an XYZ string as the second argument. `GaussianBasis` uses the `Atom` structure from [Molecules.jl](https://github.com/FermiQC/GaussianBasis.jl).
   ```julia
 atoms = Molecules.parse_string("""
               H        0.00      0.00     0.00                 
@@ -106,10 +106,7 @@ BasisSet("sto-3g", atoms)
 
  - Finally, instead of searching into `GaussianBasis/lib` for a basis set file matching the desired name, you can construct your own from scratch. We further discuss this approach below. 
 
- Basis sets are a map between atoms and their basis functions. Thus, the most important field here is a Vector (one dimensional array) of `BasisFunction` vectors (i.e. `Vector{Vector{BasisFunction}}`). Let us work out an example in the following lines.
- 
- First we create a Vector of `Atom` objects
-
+ Basis sets are a map between atoms and their basis functions. Thus, the most important field here is a Vector (one dimensional array) of `BasisFunction` vectors (i.e. `Vector{Vector{BasisFunction}}`). First we create a Vector of `Atom` objects
  ```julia
 julia> h2 = Molecules.parse_string(
    "H 0.0 0.0 0.0
@@ -119,19 +116,19 @@ julia> h2 = Molecules.parse_string(
  Atom{Int16, Float64}(1, 1.008, [0.0, 0.0, 0.0])
  Atom{Int16, Float64}(1, 1.008, [0.0, 0.0, 0.7])
  ```
- This vector is ordered the same way as the input string. Next we create basis functions.
+Next, we create basis functions.
 ```julia
 julia> s = BasisFunction(0, [0.5215367271], [0.122])
 julia> p = BasisFunction(1, [1.9584045349], [0.727]);
 ```
-Next, we create a map between atoms and basis function. In this case, for the sake of showing the flexibility here, let us do something unorthodox and attach one $s$ function to the first hydrogen and an $s$ and $p$ functions to the second:
+Next, we create a map between atoms and basis function. In this case, for the sake of showing the flexibility here, we will do something unorthodox and attach one $s$ function to the first hydrogen and an $s$ and $p$ functions to the second:
 ```julia
-julia> shells = [
-    [s],  # A s function on the first hydrogen
+julia> bmap = [
+    [s],  # One s function on the first hydrogen
     [s,p] # One s and one p function on the second hydrogen
 ];
 ```
-Note that the "mapping" is simply achieved by the ordering, the $n$-th entry in `shells` is attributed to the $n$-th Atom in `h2`. Finally, we can create the basis set:
+Note that the "mapping" is simply achieved by the ordering, the $n$-th entry in `bmap` is attributed to the $n$-th Atom in `h2`. Finally, we can create the basis set:
 ```julia
 julia> bset = BasisSet("UnequalHydrogens", h2, shells)
 UnequalHydrogens Basis Set
@@ -145,7 +142,7 @@ The most import fields here are:
 ```julia
 julia> bset.name == "UnequalHydrogens"
 true
-julia> bset.basis == shells
+julia> bset.basis == bmap
 true
 julia> bset.atoms == h2
 true
@@ -197,7 +194,7 @@ This can be useful when working with projections from one basis set onto another
 
 ### Calling raw libcint functions
 
-If one desires, it is possible to directly call the simplest/lowest-level wrap over libcint functions. This can be useful when you don't want the full array, but only few specific shell pairs. The list of function currently exposed within `GaussianBasis` can be found by 
+If one desires, it is possible to directly call the simplest/lowest-level wrap over libcint functions. This can be useful if instead of the full array you only want a few specific shell pairs. The list of function currently exposed can be found in the `GaussianBasis.Libcint` module and the corresponding `GaussianBasis/src/Libcint.jl` file.
 ```julia
 julia> names(GaussianBasis.Libcint)
 12-element Vector{Symbol}:
@@ -214,7 +211,7 @@ julia> names(GaussianBasis.Libcint)
  :cint2e_sph!
  :cint3c2e_sph!
  ```
- Otherwise you can check the file `GaussianBasis/src/Libcint.jl`. If you need to expose a new function you should do it here, don't forget to export the function afterwards!
+If you need to expose a new function you should do in that file, don't forget to export the function afterwards!
 
  > A note on conventions: original `libcint` functions do not have **!** at the end of their names, we add this to comply with Julia practices. For example, `cint1e_ovlp_sph` is exposed as `cint1e_ovlp_sph!`. The **!** indicates that the function is a [mutating function](https://docs.julialang.org/en/v1/manual/style-guide/#Use-naming-conventions-consistent-with-Julia-base/).
 
@@ -222,7 +219,7 @@ julia> names(GaussianBasis.Libcint)
 
 `cint1e_ovlp_sph!(buf, shls, atm, natm, bas, nbas, env)`
 
-A more detailed description of each argument in found in the [`libcint` documentation](https://github.com/sunqm/libcint/blob/master/doc/program_ref.pdf). We offer here an overview
+A more detailed description of each argument in found in the [`libcint` documentation](https://github.com/sunqm/libcint/blob/master/doc/program_ref.pdf). Here, we offer an overview
 
 - `buf` type: `Array{Cdouble}`
 
@@ -275,7 +272,7 @@ Notice how the **shells** are ordered: O 1s, O 2s, O 1p, H 1s, H 1s
 
 Suppose we want the overlap over O 1p and H 1s. Since p contains 3 functions, we need a 3x1 output array. The argument `shls` is used to indicate our choice of shells, in this case `shls = Cint.([2,3])`
 
-> We start counting from zero since this is a C call.
+> Counting starts from zero since this is a C call.
 
 ```julia
 julia> buf = zeros(3,1)
