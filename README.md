@@ -2,7 +2,7 @@
 [![CI](https://github.com/FermiQC/GaussianBasis.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/FermiQC/GaussianBasis.jl/actions/workflows/CI.yml)
 [![codecov](https://codecov.io/gh/FermiQC/GaussianBasis.jl/branch/main/graph/badge.svg?token=JNouJPwoHm)](https://codecov.io/gh/FermiQC/GaussianBasis.jl)
 
-GaussianBasis offers a high-level wrap around the integral library [libcint](https://github.com/sunqm/libcint) *via* [libcint_jll.jl](https://github.com/FermiQC/Fermi.jl/issues/111). 
+GaussianBasis offers a high-level wrap around the integral library [libcint](https://github.com/sunqm/libcint) *via* [libcint_jll.jl](https://github.com/JuliaBinaryWrappers/libcint_jll.jl). 
 
 Install it using Julia's pkg manager:
 
