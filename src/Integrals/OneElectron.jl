@@ -106,10 +106,10 @@ function ao1e(BS1::BasisSet, BS2::BasisSet, compute::String, T::DataType = Float
 
     lc_atm = zeros(Cint, natm*ATM_SLOTS)
     lc_bas = zeros(Cint, nshells*BAS_SLOTS)
-    env = zeros(Cdouble, length(BS1.lc_env) + length(BS2.lc_env))
+    env = zeros(Cdouble, length(BS1.lc_env) + length(BS2.lc_env) -20)
 
     # Prepare the lc_atom input 
-    off = 0
+    off = 20
     ib = 0 
     atoms = vcat(BS1.atoms, BS2.atoms)
     for i = eachindex(atoms)
@@ -120,7 +120,7 @@ function ao1e(BS1::BasisSet, BS2::BasisSet, compute::String, T::DataType = Float
         # The second one is the env index address for xyz
         lc_atm[2 + ATM_SLOTS*(i-1)] = off
         env[off+1:off+3] .= A.xyz ./ Molecules.bohr_to_angstrom
-        off += 3
+        off += 4 # Skip an extra slot reserved for nuclear model
         # The remaining 4 slots are zero.
     end
 
