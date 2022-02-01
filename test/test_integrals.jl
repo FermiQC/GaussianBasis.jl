@@ -43,3 +43,15 @@ end
 @testset "Two-Electron Two-Center" begin
     @test ERI_2e2c(bs) ≈ h5read(test_file, "J")
 end
+
+@testset "Dipole" begin
+    Co = h5read(test_file, "CH4_Orbitals")
+    bs3 = BasisSet("cc-pvdz", atoms)
+    d = GaussianBasis.dipole(bs3) # (34, 34, 3) array
+    d2 = Co' * reshape(d, (34,102)) # (5, 102) Array
+    d2 = permutedims(reshape(d2, (5,34,3)), (1,3,2)) # (5,3,34) array
+    d3 = reshape(d2, (15,34)) * Co #(15,5) array
+    d3 = reshape(d3, 5,3,5) 
+    μ = 2 .* sum(d3[i,:,i] for i=1:5)
+    @test isapprox(μ, [-40.280477, 43.202326, 0.0000], atol=1e-5)
+end
