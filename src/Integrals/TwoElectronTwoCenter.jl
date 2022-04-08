@@ -1,3 +1,29 @@
+function ERI_2e2c!(out::Array{Float64}, BS::BasisSet, A,i,B,j)
+
+    # i represents the ith basis centered on A
+    # j represents the jth basis centered on B
+
+    # Get absolute indexes I and J
+    I = i-1
+    for b in 1:(A-1)
+        I += length(BS[b])
+    end
+    J = j-1
+    for b in 1:(B-1)
+        J += length(BS[b])
+    end
+
+    Ni = 2*BS[A,i].l+1
+    Nj = 2*BS[B,j].l+1
+
+    # Check if theres enough space in 'out'
+    if length(out) < Ni*Nj
+        throw(BoundsError(out, Ni*Nj))
+    end
+
+    cint2c2e_sph!(out, Cint.([I,J]), BS.lc_atoms, BS.natoms, BS.lc_bas, BS.nbas, BS.lc_env)
+end
+
 function ERI_2e2c(BS::BasisSet, T::DataType = Float64)
 
     # Pre allocate output

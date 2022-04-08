@@ -41,7 +41,34 @@ end
 end
 
 @testset "Two-Electron Two-Center" begin
-    @test ERI_2e2c(bs) ≈ h5read(test_file, "J")
+    eri = ERI_2e2c(bs) 
+    @test eri ≈ h5read(test_file, "J")
+
+    # Test individual elements
+    Iacum = 0
+    elemwise = true
+    for A in 1:length(bs.atoms)
+        for i in 1:length(bs[A]) 
+            Ni = 2*bs[A,i].l+1
+            ri = (Iacum+1):(Iacum+Ni)
+            Jacum = 0
+            for B in 1:length(bs.atoms)
+                for j in 1:length(bs[B])
+
+                    Nj = 2*bs[B,j].l+1
+                    rj = (Jacum+1):(Jacum+Nj)
+                    buf = zeros(Ni, Nj)
+                    ERI_2e2c!(buf, bs, A, i, B, j)
+                    if !(buf ≈ eri[ri, rj])
+                        elemwise = false
+                    end
+                    Jacum += Nj
+                end
+            end
+            Iacum += Ni
+        end
+    end
+    @test elemwise
 end
 
 @testset "Dipole" begin

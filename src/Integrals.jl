@@ -2,6 +2,7 @@ using GaussianBasis.Libcint
 
 export nuclear, overlap, kinetic
 export ERI_2e2c, ERI_2e3c, ERI_2e4c, sparseERI_2e4c
+export ERI_2e2c!
 
 function index2(i, j)
     if i < j
