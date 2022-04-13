@@ -1,3 +1,26 @@
+function ERI_2e3c!(out::Array{Float64}, BS::BasisSet, A,i,B,j,C,k)
+
+    # i represents the ith basis centered on A
+    # j represents the jth basis centered on B
+    # k represents the jth basis centered on C
+
+    # Get absolute indexes I and J
+    I = BS.ind_offset[A] + i - 1
+    J = BS.ind_offset[B] + j - 1
+    K = BS.ind_offset[C] + k - 1
+
+    Ni = 2*BS[A,i].l+1
+    Nj = 2*BS[B,j].l+1
+    Nk = 2*BS[C,k].l+1
+
+    # Check if theres enough space in 'out'
+    if length(out) < Ni*Nj*Nk
+        throw(BoundsError(out, Ni*Nj*Nk))
+    end
+
+    cint3c2e_sph!(out, Cint.([I,J,K]), BS.lc_atoms, BS.natoms, BS.lc_bas, BS.nbas, BS.lc_env)
+end
+
 function ERI_2e3c(BS::BasisSet, auxBS::BasisSet, T::DataType = Float64)
 
     ATM_SLOTS = 6

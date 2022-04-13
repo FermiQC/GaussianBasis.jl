@@ -4,14 +4,8 @@ function ERI_2e2c!(out::Array{Float64}, BS::BasisSet, A,i,B,j)
     # j represents the jth basis centered on B
 
     # Get absolute indexes I and J
-    I = i-1
-    for b in 1:(A-1)
-        I += length(BS[b])
-    end
-    J = j-1
-    for b in 1:(B-1)
-        J += length(BS[b])
-    end
+    I = BS.ind_offset[A] + i - 1
+    J = BS.ind_offset[B] + j - 1
 
     Ni = 2*BS[A,i].l+1
     Nj = 2*BS[B,j].l+1

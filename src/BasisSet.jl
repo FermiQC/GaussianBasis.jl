@@ -77,6 +77,7 @@ struct BasisSet
     name::String
     atoms::Vector{Atom}
     basis::Vector{Vector{BasisFunction}}
+    ind_offset::Vector{Int}
     natoms::Cint
     nbas::Cint
     nshells::Cint
@@ -116,12 +117,14 @@ function BasisSet(name::String, atoms::Vector{T}, basis::Vector{Vector{BasisFunc
     BAS_SLOTS = 8
 
     natm = length(atoms)
+    ind_offset = zeros(Int, natm)
     nbas = 0
     nshells = 0
     nexps = 0
     nprims = 0
 
     for i in eachindex(atoms)
+        ind_offset[i] = nshells
         for b in basis[i]
             nshells += 1
             nbas += 2*b.l + 1
@@ -176,7 +179,15 @@ function BasisSet(name::String, atoms::Vector{T}, basis::Vector{Vector{BasisFunc
         end
     end
 
-    return BasisSet(name, atoms, basis, natm, nbas, nshells, lc_atm, lc_bas, env)
+    return BasisSet(name, atoms, basis, ind_offset, natm, nbas, nshells, lc_atm, lc_bas, env)
+end
+
+function BasisSet(BS1::BasisSet, BS2::BasisSet)
+    name = BS1.name*"+"*BS2.name
+    atoms = vcat(BS1.atoms, BS2.atoms)
+    basis = vcat(BS1.basis, BS2.basis)
+
+    return BasisSet(name, atoms, basis)
 end
 
 """
