@@ -37,77 +37,11 @@ end
 end
 
 @testset "Two-Electron Three-Center" begin
-    eri = ERI_2e3c(bs, bs2)
-    @test eri ≈ h5read(test_file, "Pqp_aux_sto3g")
-
-    # Build a mixed-basis set
-    bs3 = BasisSet(bs, bs2)
-
-    # Test individual elements
-    Iacum = 0
-    elemwise = true
-    for A in 1:length(bs.atoms)
-        for i in 1:length(bs3[A]) 
-            Ni = 2*bs3[A,i].l+1
-            ri = (Iacum+1):(Iacum+Ni)
-            Jacum = 0
-            for B in 1:length(bs.atoms)
-                for j in 1:length(bs3[B])
-
-                    Nj = 2*bs3[B,j].l+1
-                    rj = (Jacum+1):(Jacum+Nj)
-                    Kacum = 0
-                    for C in (length(bs.atoms)+1):length(bs3.atoms)
-                        for k in 1:length(bs3[C])
-
-                            Nk = 2*bs3[C,k].l+1
-                            rk = (Kacum+1):(Kacum+Nk)
-                            buf = zeros(Ni, Nj, Nk)
-                            ERI_2e3c!(buf, bs3, A, i, B, j, C, k)
-                            if !(buf ≈ eri[ri, rj, rk])
-                                elemwise = false
-                            end
-                            Kacum += Nk
-                        end
-                    end
-                    Jacum += Nj
-                end
-            end
-            Iacum += Ni
-        end
-    end
-    @test elemwise
+    @test ERI_2e3c(bs, bs2) ≈ h5read(test_file, "Pqp_aux_sto3g")
 end
 
 @testset "Two-Electron Two-Center" begin
-    eri = ERI_2e2c(bs) 
-    @test eri ≈ h5read(test_file, "J")
-
-    # Test individual elements
-    Iacum = 0
-    elemwise = true
-    for A in 1:length(bs.atoms)
-        for i in 1:length(bs[A]) 
-            Ni = 2*bs[A,i].l+1
-            ri = (Iacum+1):(Iacum+Ni)
-            Jacum = 0
-            for B in 1:length(bs.atoms)
-                for j in 1:length(bs[B])
-
-                    Nj = 2*bs[B,j].l+1
-                    rj = (Jacum+1):(Jacum+Nj)
-                    buf = zeros(Ni, Nj)
-                    ERI_2e2c!(buf, bs, A, i, B, j)
-                    if !(buf ≈ eri[ri, rj])
-                        elemwise = false
-                    end
-                    Jacum += Nj
-                end
-            end
-            Iacum += Ni
-        end
-    end
-    @test elemwise
+    @test ERI_2e2c(bs) ≈ h5read(test_file, "J")
 end
 
 @testset "Dipole" begin

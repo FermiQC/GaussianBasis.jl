@@ -6,6 +6,8 @@ libcint functions to the Julia interface.
 """
 module Libcint
 
+using GaussianBasis: BasisSet
+
 export cint1e_kin_sph!, cint1e_nuc_sph!, cint1e_ovlp_sph!, cint2c2e_sph!, cint2e_sph!, cint3c2e_sph!
 export cint1e_ipkin_sph!, cint1e_ipnuc_sph!, cint1e_ipovlp_sph!, cint2e_ip1_sph!, cint1e_r_sph!
 export cint1e_r_sph!, cint1e_rr_sph!, cint1e_rrr_sph!, cint1e_rrrr_sph!
@@ -28,6 +30,9 @@ function cint1e_ovlp_sph!(buf, shls, atm, natm, bas, nbas, env)
                                     env  :: Ptr{Cdouble}
                                    )::Cvoid
 end
+function cint1e_ovlp_sph!(buf::Array{Cdouble}, shls::Array{<:Integer}, bs::BasisSet) 
+    cint1e_ovlp_sph!(buf, Cint.(shls.-1), bs.lc_atoms, bs.natoms, bs.lc_bas, bs.nbas, bs.lc_env)
+end
 
 function cint1e_kin_sph!(buf, shls, atm, natm, bas, nbas, env)
     @ccall LIBCINT.cint1e_kin_sph(
@@ -40,6 +45,9 @@ function cint1e_kin_sph!(buf, shls, atm, natm, bas, nbas, env)
                                     env  :: Ptr{Cdouble}
                                    )::Cvoid
 end
+function cint1e_kin_sph!(buf::Array{Cdouble}, shls::Array{<:Integer}, bs::BasisSet) 
+    cint1e_kin_sph!(buf, Cint.(shls.-1), bs.lc_atoms, bs.natoms, bs.lc_bas, bs.nbas, bs.lc_env)
+end
 
 function cint1e_nuc_sph!(buf, shls, atm, natm, bas, nbas, env)
     @ccall LIBCINT.cint1e_nuc_sph(
@@ -51,6 +59,9 @@ function cint1e_nuc_sph!(buf, shls, atm, natm, bas, nbas, env)
                                     nbas :: Cint,
                                     env  :: Ptr{Cdouble}
                                    )::Cvoid
+end
+function cint1e_nuc_sph!(buf::Array{Cdouble}, shls::Array{<:Integer}, bs::BasisSet) 
+    cint1e_nuc_sph!(buf, Cint.(shls.-1), bs.lc_atoms, bs.natoms, bs.lc_bas, bs.nbas, bs.lc_env)
 end
 
 function cint2e_sph!(buf, shls, atm, natm, bas, nbas, env)
@@ -66,6 +77,9 @@ function cint2e_sph!(buf, shls, atm, natm, bas, nbas, env)
                                     opt :: Ptr{UInt8},
                                    )::Cvoid
 end
+function cint2e_sph!(buf::Array{Cdouble}, shls::Array{<:Integer}, bs::BasisSet) 
+    cint2e_sph!(buf, Cint.(shls.-1), bs.lc_atoms, bs.natoms, bs.lc_bas, bs.nbas, bs.lc_env)
+end
 
 function cint2c2e_sph!(buf, shls, atm, natm, bas, nbas, env)
     opt = Ptr{UInt8}(C_NULL)
@@ -80,6 +94,9 @@ function cint2c2e_sph!(buf, shls, atm, natm, bas, nbas, env)
                                     opt :: Ptr{UInt8},
                                    )::Cvoid
 end
+function cint2c2e_sph!(buf::Array{Cdouble}, shls::Array{<:Integer}, bs::BasisSet) 
+    cint2c2e_sph!(buf, Cint.(shls.-1), bs.lc_atoms, bs.natoms, bs.lc_bas, bs.nbas, bs.lc_env)
+end
 
 function cint3c2e_sph!(buf, shls, atm, natm, bas, nbas, env)
     opt = Ptr{UInt8}(C_NULL)
@@ -93,6 +110,9 @@ function cint3c2e_sph!(buf, shls, atm, natm, bas, nbas, env)
                                     env  :: Ptr{Cdouble},
                                     opt :: Ptr{UInt8},
                                    )::Cvoid
+end
+function cint3c2e_sph!(buf::Array{Cdouble}, shls::Array{<:Integer}, bs::BasisSet) 
+    cint3c2e_sph!(buf, Cint.(shls.-1), bs.lc_atoms, bs.natoms, bs.lc_bas, bs.nbas, bs.lc_env)
 end
 
 function cint1e_ipovlp_sph!(buf, shls, atm, natm, bas, nbas, env)

@@ -1,23 +1,3 @@
-function ERI_2e2c!(out::Array{Float64}, BS::BasisSet, A,i,B,j)
-
-    # i represents the ith basis centered on A
-    # j represents the jth basis centered on B
-
-    # Get absolute indexes I and J
-    I = BS.ind_offset[A] + i - 1
-    J = BS.ind_offset[B] + j - 1
-
-    Ni = 2*BS[A,i].l+1
-    Nj = 2*BS[B,j].l+1
-
-    # Check if theres enough space in 'out'
-    if length(out) < Ni*Nj
-        throw(BoundsError(out, Ni*Nj))
-    end
-
-    cint2c2e_sph!(out, Cint.([I,J]), BS.lc_atoms, BS.natoms, BS.lc_bas, BS.nbas, BS.lc_env)
-end
-
 function ERI_2e2c(BS::BasisSet, T::DataType = Float64)
 
     # Pre allocate output
@@ -43,7 +23,7 @@ function ERI_2e2c(BS::BasisSet, T::DataType = Float64)
                     joff = ao_offset[j]
 
                     # Call libcint
-                    cint2c2e_sph!(buf, Cint.([i-1,j-1]), BS.lc_atoms, BS.natoms, BS.lc_bas, BS.nbas, BS.lc_env)
+                    cint2c2e_sph!(buf, [i,j], BS)
 
                     # Loop through shell block and save unique elements
                     for js = 1:Lj

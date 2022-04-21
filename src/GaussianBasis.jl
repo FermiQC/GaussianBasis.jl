@@ -2,7 +2,7 @@ module GaussianBasis
 
 using Molecules
 using Formatting
-import Molecules: Atom, symbol
+import Molecules: Atom, symbol, parse_file, parse_string
 
 export BasisFunction, BasisSet
 

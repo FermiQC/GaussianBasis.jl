@@ -1,22 +1,22 @@
 function sparseERI_2e4c(BS::BasisSet, T::DataType = Float64, cutoff = 1e-12)
 
     # Number of unique integral elements
-    N = Int((BS.nbas^2 - BS.nbas)/2) + BS.nbas
-    N = Int((N^2 - N)/2) + N
+    N = (BS.nbas^2 - BS.nbas) ÷ 2 + BS.nbas
+    N = (N^2 - N) ÷ 2 + N
 
     # Pre allocate output
     out = zeros(T, N)
     indexes = Array{NTuple{4,Int16}}(undef, N)
 
     # Pre compute a list of angular momentum numbers (l) for each shell
-    lvals = [Libcint.CINTcgtos_spheric(i-1, BS.lc_bas) for i = 1:BS.nshells]
-    Lmax = maximum(lvals)
+    Nvals = [Libcint.CINTcgtos_spheric(i-1, BS.lc_bas) for i = 1:BS.nshells]
+    Nmax = maximum(Nvals)
 
     # Offset list for each shell, used to map shell index to AO index
-    ao_offset = [sum(lvals[1:(i-1)]) - 1 for i = 1:BS.nshells]
+    ao_offset = [sum(Nvals[1:(i-1)]) - 1 for i = 1:BS.nshells]
 
     # Unique shell pairs with i < j
-    num_ij = Int((BS.nshells^2 - BS.nshells)/2) + BS.nshells
+    num_ij = (BS.nshells^2 - BS.nshells) ÷ 2 + BS.nshells
 
     # Pre allocate array to save ij pairs
     ij_vals = Array{NTuple{2,Int32}}(undef, num_ij)
@@ -28,9 +28,9 @@ function sparseERI_2e4c(BS::BasisSet, T::DataType = Float64, cutoff = 1e-12)
     lim = Int32(BS.nshells - 1)
     for i = UnitRange{Int32}(zero(Int32),lim)
         @inbounds begin
-        Li2 = lvals[i+1]^2
+        Li2 = Nvals[i+1]^2
             for j = UnitRange{Int32}(i, lim)
-                Lj2 = lvals[j+1]^2
+                Lj2 = Nvals[j+1]^2
                 buf = zeros(Cdouble, Li2*Lj2)
                 idx = index2(i,j) + 1
                 ij_vals[idx] = (i,j)
@@ -40,7 +40,7 @@ function sparseERI_2e4c(BS::BasisSet, T::DataType = Float64, cutoff = 1e-12)
         end
     end
 
-    buf_arrays = [zeros(Cdouble, Lmax^4) for _ = 1:Threads.nthreads()]
+    buf_arrays = [zeros(Cdouble, Nmax^4) for _ = 1:Threads.nthreads()]
     
     # i,j,k,l => Shell indexes starting at zero
     # I, J, K, L => AO indexes starting at one
@@ -48,24 +48,24 @@ function sparseERI_2e4c(BS::BasisSet, T::DataType = Float64, cutoff = 1e-12)
         Threads.@spawn begin
         @inbounds begin
             buf = buf_arrays[Threads.threadid()]
-            i,j = ij_vals[ij]
-            Li, Lj = lvals[i+1], lvals[j+1]
+            i,j = ij_vals[ij] .+ 1
+            Li, Lj = Nvals[i], Nvals[j]
             Lij = Li*Lj
-            ioff = ao_offset[i+1]
-            joff = ao_offset[j+1]
+            ioff = ao_offset[i]
+            joff = ao_offset[j]
             for kl in ij:num_ij
                 σ = σvals[ij]*σvals[kl]
                 if σ < cutoff
                     continue
                 end
-                k,l = ij_vals[kl]
-                Lk, Ll = lvals[k+1], lvals[l+1]
+                k,l = ij_vals[kl] .+ 1
+                Lk, Ll = Nvals[k], Nvals[l]
                 Lijk = Lij*Lk
-                koff = ao_offset[k+1]
-                loff = ao_offset[l+1]
+                koff = ao_offset[k]
+                loff = ao_offset[l]
 
                 # Compute ERI
-                cint2e_sph!(buf, [i,j,k,l], BS.lc_atoms, BS.natoms, BS.lc_bas, BS.nbas, BS.lc_env)
+                cint2e_sph!(buf, [i,j,k,l], BS)
 
                 ### This block aims to retrieve unique elements within buf and map them to AO indexes
                 # is, js, ks, ls are indexes within the shell e.g. for a p shell is = (1, 2, 3)
@@ -110,15 +110,16 @@ end
 # This function is expensive and not optimized. Prefer using the sparse version
 function ERI_2e4c(BS::BasisSet, T::DataType = Float64)
 
-    # Save a list containing the number of primitives for each shell
-    num_prim = [Libcint.CINTcgtos_spheric(i-1, BS.lc_bas) for i = 1:BS.nshells]
+    # Save a list containing the number of basis for each shell
+    Nvals = [Libcint.CINTcgtos_spheric(i-1, BS.lc_bas) for i = 1:BS.nshells]
+    Nmax = maximum(Nvals)
 
     # Get slice corresponding to the address in S where the compute chunk goes
     ranges = UnitRange{Int64}[]
     iaccum = 1
     for i = 1:BS.nshells
-        push!(ranges, iaccum:(iaccum+ num_prim[i] -1))
-        iaccum += num_prim[i]
+        push!(ranges, iaccum:(iaccum+ Nvals[i] -1))
+        iaccum += Nvals[i]
     end
 
     # Allocate output array
@@ -141,21 +142,22 @@ function ERI_2e4c(BS::BasisSet, T::DataType = Float64)
         end
     end
 
+    # Initialize array for results
+    bufs = [zeros(Cdouble, Nmax^4) for _ = 1:Threads.nthreads()]
     @sync for (i,j,k,l) in unique_idx
         Threads.@spawn begin
             @inbounds begin
                 # Shift indexes (C starts with 0, Julia 1)
                 id, jd, kd, ld = i+1, j+1, k+1, l+1
+                Ni, Nj, Nk, Nl = Nvals[id], Nvals[jd], Nvals[kd], Nvals[ld]
 
-                # Initialize array for results
-                buf = ones(Cdouble, num_prim[id]*num_prim[jd]*num_prim[kd]*num_prim[ld])
-
+                buf = bufs[Threads.threadid()]
                 # Compute ERI
-                cint2e_sph!(buf, Cint.([i,j,k,l]), BS.lc_atoms, BS.natoms, BS.lc_bas, BS.nbas, BS.lc_env)
+                cint2e_sph!(buf, ([id,jd,kd,ld]), BS)#BS.lc_atoms, BS.natoms, BS.lc_bas, BS.nbas, BS.lc_env)
 
                 # Move results to output array
                 ri, rj, rk, rl = ranges[id], ranges[jd], ranges[kd], ranges[ld]
-                out[ri, rj, rk, rl] .= reshape(buf, (num_prim[id], num_prim[jd], num_prim[kd], num_prim[ld]))
+                out[ri, rj, rk, rl] .= reshape(buf[1:Ni*Nj*Nk*Nl], (Ni, Nj, Nk, Nl))
 
                 if i != j && k != l && index2(i,j) != index2(k,l)
                     # i,j permutation
