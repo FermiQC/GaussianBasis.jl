@@ -4,7 +4,9 @@ using Molecules
 using Formatting
 import Molecules: Atom, symbol, parse_file, parse_string
 
-export BasisFunction, BasisSet
+export BasisFunction, BasisSet, SphericalShell, CartesianShell, get_shell
+
+abstract type BasisFunction end
 
 @doc raw"""
      BasisFunction
@@ -35,11 +37,20 @@ P shell with 3 basis built from 2 primitive gaussians
      +    0.7071067812⋅Y₁₁⋅r¹⋅exp(-1.2⋅r²)
 ```
 """
-struct BasisFunction
-    l::Cint
-    coef::Vector{Cdouble}
-    exp::Vector{Cdouble}
+struct SphericalShell <: BasisFunction
+    l::Int
+    coef::Vector{Float64}
+    exp::Vector{Float64}
 end
+
+struct CartesianShell <: BasisFunction
+    l::Int
+    coef::Vector{Float64}
+    exp::Vector{Float64}
+end
+
+# Basis functions are created Spherical by default
+BasisFunction(l::Int, coef::Vector{Float64}, exp::Vector{Float64}) = SphericalShell(l,coef,exp)
 
 include("BasisParser.jl")
 include("BasisSet.jl")

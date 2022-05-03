@@ -14,5 +14,5 @@ bset = BasisSet("Test", atoms, shells)
     @test GaussianBasis.string_repr(s) == "S shell with 1 basis built from 2 primitive gaussians\n\nχ₀₀  =    0.7071067812⋅Y₀₀⋅exp(-5.0⋅r²)\n     +    0.7071067812⋅Y₀₀⋅exp(-1.2⋅r²)" 
     @test GaussianBasis.string_repr(bset) == "Test Basis Set\nNumber of shells: 6\nNumber of basis:  8\n\nC: 1s 1p \nH: 1s \nH: 1s \nH: 1s \nH: 1s"
     @test bset[1] == [s,p]
-    @test bset[1,2] == p
+    @test bset[1][2] == p
 end
