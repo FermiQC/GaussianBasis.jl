@@ -127,7 +127,7 @@ function ao1e(BS1::BasisSet, BS2::BasisSet, compute::String, T::DataType = Float
     for i = eachindex(BS1.atoms)
         # Prepare the lc_bas input
         for j = eachindex(BS1.basis[i])
-            B = BS1[i,j] 
+            B = BS1[i][j] 
             Ne = length(B.exp)
             Nc = length(B.coef)
             # lc_bas has BAS_SLOTS for each basis set
@@ -157,7 +157,7 @@ function ao1e(BS1::BasisSet, BS2::BasisSet, compute::String, T::DataType = Float
     for i = eachindex(BS2.atoms)
         # Prepare the lc_bas input
         for j = eachindex(BS2.basis[i])
-            B = BS2[i,j] 
+            B = BS2[i][j] 
             Ne = length(B.exp)
             Nc = length(B.coef)
             # lc_bas has BAS_SLOTS for each basis set

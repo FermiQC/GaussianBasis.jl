@@ -29,7 +29,7 @@ function ERI_2e3c(BS::BasisSet, auxBS::BasisSet, T::DataType = Float64)
     for i = eachindex(BS.atoms)
         # Prepare the lc_bas input
         for j = eachindex(BS.basis[i])
-            B = BS[i,j] 
+            B = BS[i][j] 
             Ne = length(B.exp)
             Nc = length(B.coef)
             # lc_bas has BAS_SLOTS for each basis set
@@ -59,7 +59,7 @@ function ERI_2e3c(BS::BasisSet, auxBS::BasisSet, T::DataType = Float64)
     for i = eachindex(auxBS.atoms)
         # Prepare the lc_bas input
         for j = eachindex(auxBS.basis[i])
-            B = auxBS[i,j] 
+            B = auxBS[i][j] 
             Ne = length(B.exp)
             Nc = length(B.coef)
             # lc_bas has BAS_SLOTS for each basis set

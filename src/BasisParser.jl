@@ -17,7 +17,7 @@ const AMDict = Dict(
 
 Returns an array of BasisFunction objects given an atom (AtomicSymbol) and basis set name (bname).
 """
-function read_basisset(bname::String, AtomSymbol::String)
+function read_basisset(bname::String, AtomSymbol::String; spherical=true)
 
     clean_bname = replace(bname, "*"=>"_st_")
     file_path = joinpath(LIBPATH, clean_bname*".gbs")
@@ -43,13 +43,13 @@ function read_basisset(bname::String, AtomSymbol::String)
     for b in BasisStrings
         r = r"[SPDFGHI]{2}"
         if occursin(r, b)
-            bf1, bf2 = two_basis_from_string(b)
+            bf1, bf2 = two_basis_from_string(b, spherical=spherical)
             normalize_basisfunction!(bf1)
             normalize_basisfunction!(bf2)
             push!(out, bf1)
             push!(out, bf2)
         else
-            bf = basis_from_string(b)
+            bf = basis_from_string(b, spherical=spherical)
             normalize_basisfunction!(bf)
             push!(out, bf)
         end
@@ -99,7 +99,7 @@ end
 From a String block representing a Basis Function in gbs format, produces a BasisFunction object.
 For the special case of two basis being described within the same block (e.g. SP blocks) see `two_basis_from_string`
 """
-function basis_from_string(bstring::String)
+function basis_from_string(bstring::String; spherical=true)
     lines = split(strip(bstring), "\n")
     head = lines[1]
     m = match(AM_pat, head)
@@ -127,7 +127,11 @@ function basis_from_string(bstring::String)
         exp[i] = parse(Float64, e)
     end
 
-    return BasisFunction(l, coef, exp)
+    if spherical
+        return SphericalShell(l, coef, exp)
+    else
+        return CartesianShell(l, coef, exp)
+    end
 end
 
 """
@@ -136,7 +140,7 @@ end
 From a String block representing two Basis Function (e.g. SP blocks) in gbs format, produces two BasisFunction objects.
 For the case of a single basis being described within the block see `basis_from_string`
 """
-function two_basis_from_string(bstring::String)
+function two_basis_from_string(bstring::String; spherical=true)
     lines = split(strip(bstring), "\n")
     head = lines[1]
     m = match(AM_pat, head)
@@ -170,5 +174,9 @@ function two_basis_from_string(bstring::String)
         exp[i] = parse(Float64, e)
     end
 
-    return BasisFunction(l1, coef1, exp), BasisFunction(l2, coef2, exp)
+    if spherical
+        return SphericalShell(l1, coef1, exp), SphericalShell(l2, coef2, exp)
+    else
+        return CartesianShell(l1, coef1, exp), CartesianShell(l2, coef2, exp)
+    end
 end

@@ -1,3 +1,5 @@
+using GaussianBasis
+using Combinatorics: doublefactorial
 import Base: getindex, show
 
 @doc raw"""
@@ -73,10 +75,10 @@ H: 1s
 H: 1s 1p
 ```
 """
-struct BasisSet
+struct BasisSet{A<:Atom,B<:BasisFunction} 
     name::String
-    atoms::Vector{Atom}
-    basis::Vector{Vector{BasisFunction}}
+    atoms::Vector{A}
+    basis::Vector{Vector{B}}
     ind_offset::Vector{Int}
     natoms::Cint
     nbas::Cint
@@ -86,14 +88,14 @@ struct BasisSet
     lc_env::Array{Cdouble,1}
 end
 
-function BasisSet(name::String, str_atoms::String)
+function BasisSet(name::String, str_atoms::String; spherical=true)
     atoms = Molecules.parse_string(str_atoms)
-    BasisSet(name, atoms)
+    BasisSet(name, atoms, spherical=spherical)
 end
 
-function BasisSet(name::String, atoms::Vector{T}) where T <: Atom
+function BasisSet(name::String, atoms::Vector{T}; spherical=true) where T <: Atom
 
-    basis = Vector{BasisFunction}[]
+    basis = spherical ? Vector{SphericalShell}[] : Vector{CartesianShell}[]
 
     # Cache entries so repeated atoms don't need to be looked up all the time
     cache = Dict()
@@ -102,14 +104,14 @@ function BasisSet(name::String, atoms::Vector{T}) where T <: Atom
         if S in keys(cache)
             push!(basis, cache[S])
         else
-            push!(basis, read_basisset(name, S))
+            push!(basis, read_basisset(name, S; spherical=spherical))
             cache[S] = basis[end]
         end
     end
     BasisSet(name, atoms, basis)
 end
 
-function BasisSet(name::String, atoms::Vector{T}, basis::Vector{Vector{BasisFunction}}) where T <: Atom
+function BasisSet(name::String, atoms::Vector{<:Atom}, basis::Vector{<:Vector{<:BasisFunction}})
 
     length(atoms) != length(basis) ? throw(ArgumentError("Error combining atoms and basis functions")) : nothing
 
@@ -179,7 +181,7 @@ function BasisSet(name::String, atoms::Vector{T}, basis::Vector{Vector{BasisFunc
         end
     end
 
-    return BasisSet(name, atoms, basis, ind_offset, natm, nbas, nshells, lc_atm, lc_bas, env)
+    return BasisSet(name, atoms, basis, ind_offset, Cint(natm), Cint(nbas), Cint(nshells), lc_atm, lc_bas, env)
 end
 
 function BasisSet(BS1::BasisSet, BS2::BasisSet)
@@ -191,24 +193,43 @@ function BasisSet(BS1::BasisSet, BS2::BasisSet)
 end
 
 """
-    GaussianBasis.gto_norm(n::Signed, a::AbstractFloat)
-
-Function that returns the normalization factor for a gaussian basis function rⁿ⋅exp(-a⋅r²)
-"""
-function gto_norm(n, a)
-   # normalization factor of function rⁿ exp(-ar²)
-    s = 2^(2n+3) * factorial(n+1) * (2a)^(n+1.5) / (factorial(2n+2) * √π)
-    return √s
-end
-
-"""
     GaussianBasis.normalize_basisfunction!(B::BasisFunction)
 
 Modify the BasisFunction object by normalizing each primitive.
 """
-function normalize_basisfunction!(B::BasisFunction)
+function normalize_basisfunction!(B::SphericalShell)
     for i = eachindex(B.coef)
-        B.coef[i] *= gto_norm(B.l, B.exp[i])
+        n = B.l
+        a = B.exp[i]
+        # normalization factor of function rⁿ exp(-ar²)
+        s = 2^(2n+3) * factorial(n+1) * (2a)^(n+1.5) / (factorial(2n+2) * √π)
+        B.coef[i] *= √s 
+    end
+end
+
+function normalize_basisfunction!(B::CartesianShell)
+    L = B.l
+    df = (π^1.5) * (L == 0 ? 1 : doublefactorial(2 * L - 1))
+
+    # Normalize primitives
+    B.coef .*= [ sqrt.((2 * ei) ^ (L + 1.5) / df) for ei in B.exp ]
+
+    # Normalize contractions
+    normsq = (df / 2^L) * sum([ ci * cj / (ei + ej) ^ (L + 1.5) 
+                                           for (ci,ei) in zip(B.coef, B.exp)
+                                           for (cj,ej) in zip(B.coef, B.exp)])
+    B.coef .*= 1 / sqrt(normsq)
+end
+
+function get_shell(BS::BasisSet, N::Int)
+    idx = 1
+    for A in 1:BS.natoms
+        for b in BS.basis[A]
+            if idx == N
+                return BS.atoms[A], b
+            end
+            idx += 1
+        end
     end
 end
 
@@ -216,11 +237,7 @@ function getindex(B::BasisSet, N::Int)
     return B.basis[N]
 end
 
-function getindex(B::BasisSet, i::Int, j::Int)
-    return B.basis[i][j]
-end
-
-function string_repr(B::BasisFunction)
+function string_repr(B::SphericalShell)
     # Generate Unicode symbol for sub number
     l_sub = Char(0x2080 + B.l)
 
