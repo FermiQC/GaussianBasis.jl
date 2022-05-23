@@ -137,7 +137,8 @@ function BasisSet(name::String, atoms::Vector{<:Atom}, basis::Vector{<:Vector{<:
 
     lc_atm = zeros(Cint, natm*ATM_SLOTS)
     lc_bas = zeros(Cint, nshells*BAS_SLOTS)
-    env = zeros(Cdouble, 20+4*natm+nexps+nprims)
+    #env = zeros(Cdouble, 20+4*natm+nexps+nprims)
+    env = zeros(eltype(atoms[1].xyz), 20+4*natm+nexps+nprims)
 
     # Prepare the lc_atom input 
     off = 20
@@ -271,6 +272,60 @@ function string_repr(B::SphericalShell)
             end
 
             out *= "⋅exp(-$(B.exp[i])⋅r²)"
+        end
+        out *="\n\n"
+    end
+    return strip(out)
+end
+
+function string_repr(B::CartesianShell)
+    # Generate Unicode symbol for sub number
+    l_sub = Char(0x2080 + B.l)
+
+    # Unicode for superscript is a bit messier, so gotta use control flow
+    l_sup(l) = l < 2 ? "" :
+            l in [2,3] ? Char(0x00B0 + l) :
+            Char(0x2070 + l)
+
+    nbas = ((B.l + 1) * (B.l + 2)) ÷ 2
+    mvals = String[]
+    for a = B.l:-1:0
+        for b = B.l:-1:0
+            c = B.l - a - b
+            if c < 0 
+                continue
+            end
+            r_str  = a > 0 ? "x"*l_sup(a) : ""
+            r_str *= b > 0 ? "y"*l_sup(b) : ""
+            r_str *= c > 0 ? "z"*l_sup(c) : ""
+            if !isempty(r_str)
+                r_str *= "⋅"
+            end
+            push!(mvals, r_str)
+        end
+    end
+    nprim = length(B.exp)
+
+    # Reverse Dict(symbol=>num) to get Symbols from B.l
+    Lsymbol = Dict(value => key for (key, value) in AMDict)[B.l]
+    out = "$(Lsymbol) shell with $nbas basis built from $nprim primitive gaussians\n\n"
+    for m in mvals
+        χ = "χ"
+        if !isempty(m)
+            _m = replace(m, "⋅"=>"")
+            χ *= "($_m)"
+        end
+        out *= format("{:<4s} = ",χ)
+        for i in eachindex(B.coef)
+
+            if i > 1
+                out *= B.coef[i] > 0 ? "\n     + " : "\n     - "
+            end
+
+            #out *= "$(abs(B.coef[i]))⋅Y$(l_sub)$m_sub"
+            out *= format("{:>15.10f}⋅$m", abs(B.coef[i]))
+
+            out *= "exp(-$(B.exp[i])⋅r²)"
         end
         out *="\n\n"
     end
