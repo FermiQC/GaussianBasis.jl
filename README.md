@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/gblogo.svg" width="400" alt=""/>
+  <img src="assets/gblogo.svg" width="600" alt=""/>
 </p>
 
 <table align="center">
