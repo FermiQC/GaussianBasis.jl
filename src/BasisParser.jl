@@ -17,8 +17,9 @@ const AMDict = Dict(
 
 Returns an array of BasisFunction objects given an atom (AtomicSymbol) and basis set name (bname).
 """
-function read_basisset(bname::String, AtomSymbol::String; spherical=true)
+function read_basisset(bname::String, atom::A; spherical=true) where A <: Atom
 
+    AtomSymbol = Molecules.symbol(atom) 
     clean_bname = replace(bname, "*"=>"_st_")
     file_path = joinpath(LIBPATH, clean_bname*".gbs")
 
@@ -96,8 +97,9 @@ end
 """
     GaussinBasis.basis_from_string(bstring::String)
 
-From a String block representing a Basis Function in gbs format, produces a BasisFunction object.
-For the special case of two basis being described within the same block (e.g. SP blocks) see `two_basis_from_string`
+From a String block representing two Basis Function (e.g. SP blocks) in gbs format, returns angular momentum,
+expansion coefficients and exponent values. For the special case of two basis being described within the 
+same block (e.g. SP blocks) see `two_basis_from_string`
 """
 function basis_from_string(bstring::String; spherical=true)
     lines = split(strip(bstring), "\n")
@@ -128,17 +130,17 @@ function basis_from_string(bstring::String; spherical=true)
     end
 
     if spherical
-        return SphericalShell(l, coef, exp)
+        return (l, coef, exp)
     else
-        return CartesianShell(l, coef, exp)
+        return (l, coef, exp)
     end
 end
 
 """
     GaussinBasis.two_basis_from_string(bstring::String)
 
-From a String block representing two Basis Function (e.g. SP blocks) in gbs format, produces two BasisFunction objects.
-For the case of a single basis being described within the block see `basis_from_string`
+From a String block representing two Basis Function (e.g. SP blocks) in gbs format, returns angular momentum,
+expansion coefficients and exponent values. For the case of a single basis being described within the block see `basis_from_string`
 """
 function two_basis_from_string(bstring::String; spherical=true)
     lines = split(strip(bstring), "\n")
@@ -175,8 +177,8 @@ function two_basis_from_string(bstring::String; spherical=true)
     end
 
     if spherical
-        return SphericalShell(l1, coef1, exp), SphericalShell(l2, coef2, exp)
+        return (l1, coef1, exp), (l2, coef2, exp)
     else
-        return CartesianShell(l1, coef1, exp), CartesianShell(l2, coef2, exp)
+        return (l1, coef1, exp), (l2, coef2, exp)
     end
 end

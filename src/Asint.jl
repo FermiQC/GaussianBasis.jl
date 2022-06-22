@@ -1,4 +1,4 @@
-module Andint
+module Asint
 
 using GaussianBasis
 using GaussianBasis: index2
@@ -7,7 +7,7 @@ using SpecialFunctions
 using Combinatorics: doublefactorial
 using LinearAlgebra: norm, eigen
 using StaticArrays
-using SIMD
+#using SIMD
 
 import ForwardDiff: Dual, partials, value
 #using Tullio: @tullio
@@ -16,7 +16,7 @@ import ForwardDiff: Dual, partials, value
 const ang2bohr = 1.8897261246257702
 
 # This is needed for AD
-# Once this is implement into ForwardDif.jl we can remove it
+# Once this is implemented into ForwardDif.jl we can remove it from here
 # Credits to David Widmann in
 # https://github.com/JuliaDiff/ForwardDiff.jl/pull/587/files
 function SpecialFunctions.gamma_inc(a::Real, d::Dual{T,<:Real}, ind::Integer) where {T}
@@ -180,7 +180,7 @@ function generate_T_pair(atom1::Atom, atom2::Atom, B1::CartesianShell, B2::Carte
             end
         end
     end
-    t_mat
+    return t_mat
 end
 
 function generate_V_pair(BS::BasisSet, s1::Int, s2::Int)
@@ -268,7 +268,7 @@ function generate_quanta_list(am::Int)
     return vals 
 end
 
-function generate_ERI_quartet(BS::BasisSet, s1, s2, s3, s4, α::Float64=1.0, β::Float64=0.0, ⍵::Float64=0.0)
+function generate_ERI_quartet(BS::BasisSet, s1, s2, s3, s4, α::Float64=1.0, β::Float64=0.0, ω::Float64=0.0)
     atom1, B1 = get_shell(BS, s1)
     atom2, B2 = get_shell(BS, s2)
     atom3, B3 = get_shell(BS, s3)
@@ -697,8 +697,6 @@ function ovlp_sum(X)
         bs = vcat(bs, GaussianBasis.read_basisset("sto-3g", "H", spherical=false))
     end
     S = generate_ERI_quartet(atoms[1], atoms[2], atoms[1], atoms[3], bs[1], bs[2], bs[1], bs[3])
-    #S = GaussianBasis.Andint.generate_V_pair(atoms[1], atoms[2], bs[1], bs[2], atoms)
-    #S = GaussianBasis.Andint.generate_S_pair(atoms[1], atoms[2], bs[1], bs[2])
     return S[1]
 end
 
