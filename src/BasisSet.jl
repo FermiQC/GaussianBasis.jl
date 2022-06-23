@@ -181,11 +181,11 @@ function BasisSet(name::String, atoms::Vector{Atom}; spherical=true, lib=:libcin
     cache = Dict()
     for i in eachindex(atoms)
         S = symbol(atoms[i])
+        atom = atoms[i]
         if S in keys(cache)
             push!(basis, cache[S])
         else
-            ss = read_basisset(name, S; spherical=spherical)
-            push!(basis, read_basisset(name, S; spherical=spherical))
+            push!(basis, read_basisset(name, atom; spherical=spherical))
             cache[S] = basis[end]
         end
     end
@@ -241,6 +241,15 @@ function normalize_basisfunction!(B::SphericalShell)
         # normalization factor of function rⁿ exp(-ar²)
         s = 2^(2n+3) * factorial(n+1) * (2a)^(n+1.5) / (factorial(2n+2) * √π)
         B.coef[i] *= √s 
+    end
+end
+
+function normalize_spherical!(coef, exp, n)
+    for i = eachindex(coef)
+        a = exp[i]
+        # normalization factor of function rⁿ exp(-ar²)
+        s = 2^(2n+3) * factorial(n+1) * (2a)^(n+1.5) / (factorial(2n+2) * √π)
+        coef[i] *= √s 
     end
 end
 

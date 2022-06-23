@@ -44,14 +44,11 @@ function read_basisset(bname::String, atom::A; spherical=true) where A <: Atom
     for b in BasisStrings
         r = r"[SPDFGHI]{2}"
         if occursin(r, b)
-            bf1, bf2 = two_basis_from_string(b, spherical=spherical)
-            normalize_basisfunction!(bf1)
-            normalize_basisfunction!(bf2)
+            bf1, bf2 = two_basis_from_string(b, atom, spherical=spherical)
             push!(out, bf1)
             push!(out, bf2)
         else
-            bf = basis_from_string(b, spherical=spherical)
-            normalize_basisfunction!(bf)
+            bf = basis_from_string(b, atom, spherical=spherical)
             push!(out, bf)
         end
     end
@@ -101,7 +98,7 @@ From a String block representing two Basis Function (e.g. SP blocks) in gbs form
 expansion coefficients and exponent values. For the special case of two basis being described within the 
 same block (e.g. SP blocks) see `two_basis_from_string`
 """
-function basis_from_string(bstring::String; spherical=true)
+function basis_from_string(bstring::String, atom::A; spherical=true) where A <: Atom
     lines = split(strip(bstring), "\n")
     head = lines[1]
     m = match(AM_pat, head)
@@ -130,7 +127,10 @@ function basis_from_string(bstring::String; spherical=true)
     end
 
     if spherical
-        return (l, coef, exp)
+        normalize_spherical!(coef, exp, l)
+        coef = SVector{nprim}(coef)
+        exp = SVector{nprim}(exp)
+        return SphericalShell(l, coef, exp, atom)
     else
         return (l, coef, exp)
     end
