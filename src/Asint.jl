@@ -1,7 +1,7 @@
 module Asint
 
 using GaussianBasis
-using GaussianBasis: index2
+using GaussianBasis: index2, num_basis
 using Molecules
 using SpecialFunctions
 using Combinatorics: doublefactorial
@@ -268,17 +268,15 @@ function generate_quanta_list(am::Int)
     return vals 
 end
 
-function generate_ERI_quartet(BS::BasisSet, s1, s2, s3, s4, α::Float64=1.0, β::Float64=0.0, ω::Float64=0.0)
-    atom1, B1 = get_shell(BS, s1)
-    atom2, B2 = get_shell(BS, s2)
-    atom3, B3 = get_shell(BS, s3)
-    atom4, B4 = get_shell(BS, s4)
-
-    generate_ERI_quartet(atom1, atom2, atom3, atom4, B1, B2, B3, B4, α, β, ω)
+function generate_ERI_quartet(BS::BasisSet{GaussianBasis.ASint}, s1, s2, s3, s4, α::Float64=1.0, β::Float64=0.0, ω::Float64=0.0)
+    generate_ERI_quartet(BS.basis[s1], BS.basis[s2], BS.basis[s3], BS.basis[s4], α, β, ω)
 end
 
-function generate_ERI_quartet(atom1::Atom, atom2::Atom, atom3::Atom, atom4::Atom, 
-                              B1::CartesianShell, B2::CartesianShell, B3::CartesianShell, B4::CartesianShell,
+function generate_ERI_quartet(BS::BasisSet{GaussianBasis.LCint}, s1, s2, s3, s4, α::Float64=1.0, β::Float64=0.0, ω::Float64=0.0)
+    generate_ERI_quartet(BS.lib, s1, s2, s3, s4, α, β, ω)
+end
+
+function generate_ERI_quartet(B1::CartesianShell, B2::CartesianShell, B3::CartesianShell, B4::CartesianShell,
                               α::Float64=1.0, β::Float64=0.0, ⍵::Float64=0.0)
 
     """ Generates generalized Coulomb integrals of the form
@@ -286,6 +284,11 @@ function generate_ERI_quartet(atom1::Atom, atom2::Atom, atom3::Atom, atom4::Atom
         --------------
               R       
         for a given shell quartet """
+
+    atom1 = B1.atom
+    atom2 = B2.atom
+    atom3 = B3.atom
+    atom4 = B4.atom
 
     T = eltype(atom1.xyz)
     am1 = B1.l
@@ -295,10 +298,10 @@ function generate_ERI_quartet(atom1::Atom, atom2::Atom, atom3::Atom, atom4::Atom
     am = am1 + am2 + am3 + am4
     ints = zeros(T, cart_dim(am1), cart_dim(am2), cart_dim(am3), cart_dim(am4))
 
-    A = SVector{3}(atom1.xyz) .* ang2bohr
-    B = SVector{3}(atom2.xyz) .* ang2bohr
-    C = SVector{3}(atom3.xyz) .* ang2bohr
-    D = SVector{3}(atom4.xyz) .* ang2bohr
+    A = atom1.xyz .* ang2bohr
+    B = atom2.xyz .* ang2bohr
+    C = atom3.xyz .* ang2bohr
+    D = atom4.xyz .* ang2bohr
 
     Rmat = zeros(T, am + 1, cumulative_cart_dim(am))
 
@@ -578,14 +581,7 @@ end
 function ERI_2e4c(BS::BasisSet, T::DataType = Float64)
 
     # Save a list containing the number of basis for each shell
-    Nvals = zeros(Int, BS.nshells)
-    idx = 1
-    for A in 1:BS.natoms
-        for b in BS[A]
-            Nvals[idx] = cart_dim(b.l)
-            idx += 1
-        end
-    end
+    Nvals = num_basis.(BS.basis)
     nbf = sum(Nvals)
 
     # Offset list for each shell, used to map shell index to AO index
@@ -718,4 +714,129 @@ function findif(X, callback)
     return out
 end
 
+function generate_ERI_quartet(lib, s1, s2, s3, s4,
+                              α::Float64=1.0, β::Float64=0.0, ⍵::Float64=0.0)
+
+    """ Generates generalized Coulomb integrals of the form
+        α + β(erf ⍵ R)
+        --------------
+              R       
+        for a given shell quartet """
+
+    ATM_SLOTS = 6
+    BAS_SLOTS = 8
+
+    T = Float64
+    atom1idx = lib.bas[1 + BAS_SLOTS*(s1-1)]
+    atom2idx = lib.bas[1 + BAS_SLOTS*(s2-1)]
+    atom3idx = lib.bas[1 + BAS_SLOTS*(s3-1)]
+    atom4idx = lib.bas[1 + BAS_SLOTS*(s4-1)]
+
+    xyz_idx_1 = lib.atm[2 + ATM_SLOTS*(atom1idx)]
+    xyz_idx_2 = lib.atm[2 + ATM_SLOTS*(atom2idx)]
+    xyz_idx_3 = lib.atm[2 + ATM_SLOTS*(atom3idx)]
+    xyz_idx_4 = lib.atm[2 + ATM_SLOTS*(atom4idx)]
+
+    A = lib.env[xyz_idx_1+1 : xyz_idx_1+3] 
+    B = lib.env[xyz_idx_2+1 : xyz_idx_2+3] 
+    C = lib.env[xyz_idx_3+1 : xyz_idx_3+3] 
+    D = lib.env[xyz_idx_4+1 : xyz_idx_4+3] 
+
+    am1 = lib.bas[2 + BAS_SLOTS*(s1-1)] |> Int64
+    am2 = lib.bas[2 + BAS_SLOTS*(s2-1)] |> Int64
+    am3 = lib.bas[2 + BAS_SLOTS*(s3-1)] |> Int64
+    am4 = lib.bas[2 + BAS_SLOTS*(s4-1)] |> Int64
+
+    np1 = lib.bas[3 + BAS_SLOTS*(s1-1)]
+    np2 = lib.bas[3 + BAS_SLOTS*(s2-1)]
+    np3 = lib.bas[3 + BAS_SLOTS*(s3-1)]
+    np4 = lib.bas[3 + BAS_SLOTS*(s4-1)]
+
+    exp_idx_1 = lib.bas[6 + BAS_SLOTS*(s1-1)]
+    exp_idx_2 = lib.bas[6 + BAS_SLOTS*(s2-1)]
+    exp_idx_3 = lib.bas[6 + BAS_SLOTS*(s3-1)]
+    exp_idx_4 = lib.bas[6 + BAS_SLOTS*(s4-1)]
+
+    exp1 = lib.env[exp_idx_1+1 : exp_idx_1+np1]
+    exp2 = lib.env[exp_idx_2+1 : exp_idx_2+np2]
+    exp3 = lib.env[exp_idx_3+1 : exp_idx_3+np3]
+    exp4 = lib.env[exp_idx_4+1 : exp_idx_4+np4]
+
+    coef_idx_1 = lib.bas[7 + BAS_SLOTS*(s1-1)]
+    coef_idx_2 = lib.bas[7 + BAS_SLOTS*(s2-1)]
+    coef_idx_3 = lib.bas[7 + BAS_SLOTS*(s3-1)]
+    coef_idx_4 = lib.bas[7 + BAS_SLOTS*(s4-1)]
+
+    coef1 = lib.env[coef_idx_1+1 : coef_idx_1+np1]
+    coef2 = lib.env[coef_idx_2+1 : coef_idx_2+np2]
+    coef3 = lib.env[coef_idx_3+1 : coef_idx_3+np3]
+    coef4 = lib.env[coef_idx_4+1 : coef_idx_4+np4]
+
+    am = am1 + am2 + am3 + am4
+    ints = zeros(T, cart_dim(am1), cart_dim(am2), cart_dim(am3), cart_dim(am4))
+
+    Rmat = zeros(T, am + 1, cumulative_cart_dim(am))
+
+    bra_Ex = zeros(T, am1 + 1, am2 + 1, am1 + am2 + 2)
+    bra_Ey = zeros(T, am1 + 1, am2 + 1, am1 + am2 + 2)
+    bra_Ez = zeros(T, am1 + 1, am2 + 1, am1 + am2 + 2)
+    ket_Ex = zeros(T, am3 + 1, am4 + 1, am3 + am4 + 2)
+    ket_Ey = zeros(T, am3 + 1, am4 + 1, am3 + am4 + 2)
+    ket_Ez = zeros(T, am3 + 1, am4 + 1, am3 + am4 + 2)
+
+    iter1 = generate_quanta_list(am1)
+    iter2 = generate_quanta_list(am2)
+    iter3 = generate_quanta_list(am3)
+    iter4 = generate_quanta_list(am4)
+    for (ca, a) in zip(coef1, exp1)
+        for (cb, b) in zip(coef2, exp2)
+            p = a + b
+            P = (a * A + b * B) / p
+            generate_E_matrix!(bra_Ex, bra_Ey, bra_Ez, am1, am2, P, A, B, a, b)
+            for (cc, c) in zip(coef3, exp3)
+                for (cd, d) in zip(coef4, exp4)
+                    q = c + d
+                    Q = (c * C + d * D) / q
+                    generate_E_matrix!(ket_Ex, ket_Ey, ket_Ez, am3, am4, Q, C, D, c, d)
+
+                    ɑ = p * q / (p + q)
+                    prefac = 2 * π^(5/2) * ca * cb * cc * cd / (p * q * sqrt(p + q))
+
+                    generate_R_matrix!(Rmat, am, ɑ, P, Q, α, β, ⍵)
+                    for (l1, m1, n1, index1) in iter1
+                        for (l2, m2, n2, index2) in iter2
+                            for t = 0 : l1 + l2
+                                for u = 0 : m1 + m2
+                                    for v = 0 : n1 + n2
+                                        @inbounds Eab = bra_Ex[l1+1, l2+1, t+1] * bra_Ey[m1+1, m2+1, u+1] * bra_Ez[n1+1, n2+1, v+1]
+                                        for (l3, m3, n3, index3) in iter3
+                                            for (l4, m4, n4, index4) in iter4
+                                                val = 0.0
+                                                for τ = 0 : l3 + l4
+                                                    for ν = 0 : m3 + m4
+                                                        for φ = 0 : n3 + n4
+                                                            @inbounds @fastmath Ecd = ket_Ex[l3+1, l4+1, τ+1] * ket_Ey[m3+1, m4+1, ν+1] * ket_Ez[n3+1, n4+1, φ+1]
+                                                            # eqn. 9.9.33
+                                                            if isodd(τ+ν+φ)
+                                                                @inbounds @fastmath val -= Ecd * Rmat[1, addr(t + τ, u + ν, v + φ, am)]
+                                                            else
+                                                                @inbounds @fastmath val += Ecd * Rmat[1, addr(t + τ, u + ν, v + φ, am)]
+                                                            end
+                                                        end
+                                                    end
+                                                end
+                                                @inbounds ints[index1, index2, index3, index4] += prefac * Eab * val
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return ints
+end
 end #module

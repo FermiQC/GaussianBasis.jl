@@ -28,10 +28,10 @@ function cint1e_ovlp_sph!(buf, shls, atm, natm, bas, nbas, env)
                                     bas  :: Ptr{Cint},
                                     nbas :: Cint,
                                     env  :: Ptr{Cdouble}
-                                   )::Cvoid
+                                )::Cvoid
 end
 function cint1e_ovlp_sph!(buf::Array{Cdouble}, shls::Array{<:Integer}, bs::BasisSet) 
-    cint1e_ovlp_sph!(buf, Cint.(shls.-1), bs.lc_atoms, bs.natoms, bs.lc_bas, bs.nbas, bs.lc_env)
+    cint1e_ovlp_sph!(buf, Cint.(shls.-1), bs.lib.atm, bs.lib.natm, bs.lib.bas, bs.lib.nbas, bs.lib.env)
 end
 
 function cint1e_kin_sph!(buf, shls, atm, natm, bas, nbas, env)
@@ -43,10 +43,10 @@ function cint1e_kin_sph!(buf, shls, atm, natm, bas, nbas, env)
                                     bas  :: Ptr{Cint},
                                     nbas :: Cint,
                                     env  :: Ptr{Cdouble}
-                                   )::Cvoid
+                                )::Cvoid
 end
 function cint1e_kin_sph!(buf::Array{Cdouble}, shls::Array{<:Integer}, bs::BasisSet) 
-    cint1e_kin_sph!(buf, Cint.(shls.-1), bs.lc_atoms, bs.natoms, bs.lc_bas, bs.nbas, bs.lc_env)
+    cint1e_kin_sph!(buf, Cint.(shls.-1), bs.lib.atm, bs.lib.natm, bs.lib.bas, bs.lib.nbas, bs.lib.env)
 end
 
 function cint1e_nuc_sph!(buf, shls, atm, natm, bas, nbas, env)
@@ -58,10 +58,10 @@ function cint1e_nuc_sph!(buf, shls, atm, natm, bas, nbas, env)
                                     bas  :: Ptr{Cint},
                                     nbas :: Cint,
                                     env  :: Ptr{Cdouble}
-                                   )::Cvoid
+                                )::Cvoid
 end
 function cint1e_nuc_sph!(buf::Array{Cdouble}, shls::Array{<:Integer}, bs::BasisSet) 
-    cint1e_nuc_sph!(buf, Cint.(shls.-1), bs.lc_atoms, bs.natoms, bs.lc_bas, bs.nbas, bs.lc_env)
+    cint1e_nuc_sph!(buf, Cint.(shls.-1), bs.lib.atm, bs.lib.natm, bs.lib.bas, bs.lib.nbas, bs.lib.env)
 end
 
 function cint2e_sph!(buf, shls, atm, natm, bas, nbas, env)
@@ -75,10 +75,10 @@ function cint2e_sph!(buf, shls, atm, natm, bas, nbas, env)
                                     nbas :: Cint,
                                     env  :: Ptr{Cdouble},
                                     opt :: Ptr{UInt8},
-                                   )::Cvoid
+                                )::Cvoid
 end
 function cint2e_sph!(buf::Array{Cdouble}, shls::Array{<:Integer}, bs::BasisSet) 
-    cint2e_sph!(buf, Cint.(shls.-1), bs.lc_atoms, bs.natoms, bs.lc_bas, bs.nbas, bs.lc_env)
+    cint2e_sph!(buf, Cint.(shls.-1), bs.lib.atm, bs.lib.natm, bs.lib.bas, bs.lib.nbas, bs.lib.env)
 end
 
 function cint2c2e_sph!(buf, shls, atm, natm, bas, nbas, env)
@@ -92,10 +92,10 @@ function cint2c2e_sph!(buf, shls, atm, natm, bas, nbas, env)
                                     nbas :: Cint,
                                     env  :: Ptr{Cdouble},
                                     opt :: Ptr{UInt8},
-                                   )::Cvoid
+                                )::Cvoid
 end
 function cint2c2e_sph!(buf::Array{Cdouble}, shls::Array{<:Integer}, bs::BasisSet) 
-    cint2c2e_sph!(buf, Cint.(shls.-1), bs.lc_atoms, bs.natoms, bs.lc_bas, bs.nbas, bs.lc_env)
+    cint2c2e_sph!(buf, Cint.(shls.-1), bs.lib.atm, bs.lib.natm, bs.lib.bas, bs.lib.nbas, bs.lib.env)
 end
 
 function cint3c2e_sph!(buf, shls, atm, natm, bas, nbas, env)
@@ -109,10 +109,10 @@ function cint3c2e_sph!(buf, shls, atm, natm, bas, nbas, env)
                                     nbas :: Cint,
                                     env  :: Ptr{Cdouble},
                                     opt :: Ptr{UInt8},
-                                   )::Cvoid
+                                )::Cvoid
 end
 function cint3c2e_sph!(buf::Array{Cdouble}, shls::Array{<:Integer}, bs::BasisSet) 
-    cint3c2e_sph!(buf, Cint.(shls.-1), bs.lc_atoms, bs.natoms, bs.lc_bas, bs.nbas, bs.lc_env)
+    cint3c2e_sph!(buf, Cint.(shls.-1), bs.lib.atm, bs.lib.natm, bs.lib.bas, bs.lib.nbas, bs.lib.env)
 end
 
 function cint1e_ipovlp_sph!(buf, shls, atm, natm, bas, nbas, env)

@@ -34,23 +34,23 @@ function ao1e(BS::BasisSet, compute::String, T::DataType = Float64)
     # Pre allocate output
     out = zeros(T, BS.nbas, BS.nbas)
 
-    # Pre compute a list of angular momentum numbers (l) for each shell
-    lvals = [Libcint.CINTcgtos_spheric(i-1, BS.lc_bas) for i = 1:BS.nshells]
-    Lmax = maximum(lvals)
+    # Pre compute number of basis per shell
+    Nvals = num_basis.(BS.basis)
+    Nmax = maximum(Nvals)
 
     # Offset list for each shell, used to map shell index to AO index
-    ao_offset = [sum(lvals[1:(i-1)]) for i = 1:BS.nshells]
+    ao_offset = [sum(Nvals[1:(i-1)]) for i = 1:BS.nshells]
 
-    buf_arrays = [zeros(Cdouble, Lmax^2) for _ = 1:Threads.nthreads()]
+    buf_arrays = [zeros(Cdouble, Nmax^2) for _ = 1:Threads.nthreads()]
 
     @sync for i in 1:BS.nshells
         Threads.@spawn begin
             @inbounds begin
-                Li = lvals[i]
+                Li = Nvals[i]
                 buf = buf_arrays[Threads.threadid()]
                 ioff = ao_offset[i]
                 for j in i:BS.nshells
-                    Lj = lvals[j]
+                    Lj = Nvals[j]
                     joff = ao_offset[j]
 
                     # Call libcint

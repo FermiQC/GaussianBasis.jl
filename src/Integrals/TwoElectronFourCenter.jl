@@ -9,7 +9,7 @@ function sparseERI_2e4c(BS::BasisSet, T::DataType = Float64, cutoff = 1e-12)
     indexes = Array{NTuple{4,Int16}}(undef, N)
 
     # Pre compute a list of angular momentum numbers (l) for each shell
-    Nvals = [Libcint.CINTcgtos_spheric(i-1, BS.lc_bas) for i = 1:BS.nshells]
+    Nvals = num_basis.(BS.basis)
     Nmax = maximum(Nvals)
 
     # Offset list for each shell, used to map shell index to AO index
@@ -111,7 +111,7 @@ end
 function ERI_2e4c(BS::BasisSet, T::DataType = Float64)
 
     # Save a list containing the number of basis for each shell
-    Nvals = [Libcint.CINTcgtos_spheric(i-1, BS.lc_bas) for i = 1:BS.nshells]
+    Nvals = num_basis.(BS.basis)
     Nmax = maximum(Nvals)
 
     # Get slice corresponding to the address in S where the compute chunk goes

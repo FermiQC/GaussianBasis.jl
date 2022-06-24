@@ -119,10 +119,12 @@ function string_repr(B::BasisSet{T,Y,P}) where {T,Y,P}
         # Count how many times s,p,d appears for numbering
         count = zeros(Int16, 7)
         out *= "$(symbol(A)): "
-        for bfs in B.basis[i]
-            L = bfs.l
-            count[L+1] += 1
-            out *= "$(count[L+1])$(l_to_symbol[L]) "
+        for b in B.basis
+            if b.atom == A
+                L = l_to_symbol[b.l]
+                count[b.l+1] += 1
+                out *= "$(count[b.l+1])$(L) "
+            end
         end
         out *="\n"
     end

@@ -15,23 +15,24 @@ struct LCint <: IntLib
     env::Vector{Cdouble}
 end
 
-function LCint(atoms::Vector{<:Atom}, basis::Vector{<:Vector{<:BasisFunction}})
+function LCint(atoms::Vector{<:Atom}, basis::Vector{<:BasisFunction})
     ATM_SLOTS = 6
     BAS_SLOTS = 8
 
     natm = length(atoms)
 
-    nshells = 0
+    nshells = length(basis)
     nbas    = 0
     nexps   = 0
     nprims  = 0
 
     for i in eachindex(atoms)
-        for b in basis[i]
-            nshells += 1
-            nbas    += num_basis(b)
-            nexps   += length(b.exp)
-            nprims  += length(b.coef)
+        for b in basis
+            if b.atom == atoms[i]
+                nbas    += num_basis(b)
+                nexps   += length(b.exp)
+                nprims  += length(b.coef)
+            end
         end
     end
 
@@ -53,8 +54,11 @@ function LCint(atoms::Vector{<:Atom}, basis::Vector{<:Vector{<:BasisFunction}})
         off += 4 # Skip an extra slot for the kappa (nuclear model parameter)
         # The remaining 4 slots are zero.
 
-        for j = eachindex(basis[i])
-            B = basis[i][j] 
+        for j = eachindex(basis)
+            B = basis[j]
+            if B.atom != A
+                continue
+            end
             Ne = length(B.exp)
             Nc = length(B.coef)
             # lc_bas has BAS_SLOTS for each basis set
@@ -159,7 +163,7 @@ H: 1s 1p
 struct BasisSet{L<:IntLib, A<:Atom, B<:BasisFunction} 
     name::String
     atoms::Vector{A}
-    basis::Vector{Vector{B}}
+    basis::Vector{B}
     basis_per_atom::Vector{Int}
     shells_per_atom::Vector{Int}
     natoms::Int
@@ -173,39 +177,34 @@ function BasisSet(name::String, str_atoms::String; spherical=true, lib=:libcint)
     BasisSet(name, atoms, spherical=spherical, lib=lib)
 end
 
-function BasisSet(name::String, atoms::Vector{Atom}; spherical=true, lib=:libcint)
+function BasisSet(name::String, atoms::Vector{<:Atom}; spherical=true, lib=:libcint)
 
-    basis = spherical ? Vector{SphericalShell}[] : Vector{CartesianShell}[]
+    basis = spherical ? SphericalShell[] : CartesianShell[]
 
-    # Cache entries so repeated atoms don't need to be looked up all the time
-    cache = Dict()
     for i in eachindex(atoms)
-        S = symbol(atoms[i])
-        atom = atoms[i]
-        if S in keys(cache)
-            push!(basis, cache[S])
-        else
-            push!(basis, read_basisset(name, atom; spherical=spherical))
-            cache[S] = basis[end]
-        end
+        bfs = read_basisset(name, atoms[i]; spherical=spherical)
+        push!(basis, bfs...)
     end
     BasisSet(name, atoms, basis, lib=lib)
 end
 
-function BasisSet(name::String, atoms::Vector{Atom}, basis::Vector{<:Vector{<:BasisFunction}}; lib=:libcint)
-
-    length(atoms) != length(basis) ? throw(ArgumentError("Error combining atoms and basis functions")) : nothing
+function BasisSet(name::String, atoms::Vector{<:Atom}, basis::Vector{<:BasisFunction}; lib=:libcint)
 
     natm = length(atoms)
 
     # Number of shells per atom
-    spa = length.(basis) 
-    nshells = sum(spa)
+    nshells = length(basis)
 
     # Number of basis per atom
     bpa = zeros(Int, natm)
+    spa = zeros(Int, natm)
     for a in 1:natm
-        bpa[a] = sum(num_basis(b) for b in basis[a])
+        for b in basis
+            if atoms[a] == b.atom
+                spa[a] += 1 
+                bpa[a] += num_basis(b) 
+            end
+        end
     end
     nbas = sum(bpa)
 
@@ -251,6 +250,19 @@ function normalize_spherical!(coef, exp, n)
         s = 2^(2n+3) * factorial(n+1) * (2a)^(n+1.5) / (factorial(2n+2) * √π)
         coef[i] *= √s 
     end
+end
+
+function normalize_cartesian!(coef, exp, l)
+    df = (π^1.5) * (l == 0 ? 1 : doublefactorial(2 * l - 1))
+
+    # Normalize primitives
+    coef .*= [ sqrt.((2 * ei) ^ (l + 1.5) / df) for ei in exp ]
+
+    # Normalize contractions
+    normsq = (df / 2^l) * sum([ ci * cj / (ei + ej) ^ (l + 1.5) 
+                                           for (ci,ei) in zip(coef, exp)
+                                           for (cj,ej) in zip(coef, exp)])
+    coef .*= 1 / sqrt(normsq)
 end
 
 """
