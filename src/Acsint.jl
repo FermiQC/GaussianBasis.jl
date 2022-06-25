@@ -1,4 +1,4 @@
-module Asint
+module Acsint
 
 using GaussianBasis
 using GaussianBasis: index2, num_basis
@@ -7,11 +7,10 @@ using SpecialFunctions
 using Combinatorics: doublefactorial
 using LinearAlgebra: norm, eigen
 using StaticArrays
-#using SIMD
 
 import ForwardDiff: Dual, partials, value
-#using Tullio: @tullio
-#using Printf: @printf
+
+export generate_ERI_quartet!, generate_S_pair!, generate_T_pair!, generate_V_pair!
 
 const ang2bohr = 1.8897261246257702
 
@@ -42,39 +41,22 @@ function addr(t::Int, u::Int, v::Int, l::Int)
     ( v * (11 + 3 * l * (4 + l) - 6 * v - 3 * l * v + v * v) + 3 * u * (3 + 2 * l - 2 * v - u)) ÷ 6 + t + 1
 end
 
-function generate_quanta(am)
-    """ Generates angular momentum compontents in CCA's lexicographic order http://dx.doi.org/10.1002/jcc.20815 """
-    index = 1
-    Channel() do channel
-        for l in am : -1 : 0
-            for n in 0 : am - l
-                m = am - l - n
-                put!(channel, (l, m, n, index))
-                index += 1
-            end
-        end
-    end
+function generate_S_pair!(out, BS::BasisSet, s1, s2)
+    generate_S_pair!(out, BS.basis[s1], BS.basis[s2])
 end
 
-function generate_S_pair(BS::BasisSet, s1::Int, s2::Int)
-    atom1, B1 = get_shell(BS, s1)
-    atom2, B2 = get_shell(BS, s2)
-    generate_S_pair(atom1, atom2, B1, B2)
-end
-
-function generate_S_pair(atom1::Atom, atom2::Atom, B1::CartesianShell, B2::CartesianShell)
+function generate_S_pair!(out, B1::CartesianShell, B2::CartesianShell)
     # Generates the block of the overlap matrix corresponding to a given shell pair
+
+    out .= 0.0
 
     am1 = B1.l
     am2 = B2.l
 
-    #T = typeof(atom1.xyz)
+    A = B1.atom.xyz .* ang2bohr
+    B = B2.atom.xyz .* ang2bohr
 
-    A = atom1.xyz .* ang2bohr
-    B = atom2.xyz .* ang2bohr
-
-    s_mat = similar(A, (cart_dim(am1), cart_dim(am2)))
-    s_mat .= 0.0
+    N1 = num_basis(B1)
 
     Ex = similar(A, am1 + 1, am2 + 1, am1 + am2 + 2)
     Ey = similar(A, am1 + 1, am2 + 1, am1 + am2 + 2)
@@ -99,7 +81,7 @@ function generate_S_pair(atom1::Atom, atom2::Atom, B1::CartesianShell, B2::Carte
                     for l2 in am2 : -1 : 0
                         for n2 in 0 : am2 - l2
                             m2 = am2 - l2 - n2
-                            s_mat[index1, index2] += Ex[l1+1, l2+1, 1] * Ey[m1+1, m2+1, 1] * Ez[n1+1, n2+1, 1] * prefac
+                            out[index1 + N1*(index2-1)] += Ex[l1+1, l2+1, 1] * Ey[m1+1, m2+1, 1] * Ez[n1+1, n2+1, 1] * prefac
                             index2 += 1
                         end
                     end
@@ -108,26 +90,25 @@ function generate_S_pair(atom1::Atom, atom2::Atom, B1::CartesianShell, B2::Carte
             end
         end
     end
-    s_mat
+    return out
 end
 
-function generate_T_pair(BS::BasisSet, s1::Int, s2::Int)
-    atom1, B1 = get_shell(BS, s1)
-    atom2, B2 = get_shell(BS, s2)
-    generate_T_pair(atom1, atom2, B1, B2)
+function generate_T_pair!(out, BS::BasisSet, s1, s2)
+    generate_T_pair!(out, BS.basis[s1], BS.basis[s2])
 end
 
-function generate_T_pair(atom1::Atom, atom2::Atom, B1::CartesianShell, B2::CartesianShell)
+function generate_T_pair!(out, B1::CartesianShell, B2::CartesianShell)
 
     # Generates the block of the overlap matrix corresponding to a given shell pair
+    out .= 0.0
+
     am1 = B1.l
     am2 = B2.l
 
-    A = atom1.xyz .* ang2bohr
-    B = atom2.xyz .* ang2bohr
+    A = B1.atom.xyz .* ang2bohr
+    B = B2.atom.xyz .* ang2bohr
 
-    t_mat = similar(A, (cart_dim(am1), cart_dim(am2)))
-    t_mat .= 0.0
+    N1 = num_basis(B1)
 
     Ex = similar(A, am1 + 3, am2 + 1, am1 + am2 + 4)
     Ey = similar(A, am1 + 3, am2 + 1, am1 + am2 + 4)
@@ -169,7 +150,7 @@ function generate_T_pair(atom1::Atom, atom2::Atom, B1::CartesianShell, B2::Carte
                                 Dz2 += n1 * (n1 - 1) * Ez[n1-1, n2+1, 1]
                             end
                             # eqn. 9.3.37
-                            t_mat[index1, index2] += prefac * (Dx2 * Sy0 * Sz0
+                            out[index1 + N1*(index2-1)] += prefac * (Dx2 * Sy0 * Sz0
                                                              + Sx0 * Dy2 * Sz0
                                                              + Sx0 * Sy0 * Dz2)
                             index2 +=1
@@ -180,30 +161,30 @@ function generate_T_pair(atom1::Atom, atom2::Atom, B1::CartesianShell, B2::Carte
             end
         end
     end
-    return t_mat
+    return out
 end
 
-function generate_V_pair(BS::BasisSet, s1::Int, s2::Int)
-    atom1, B1 = get_shell(BS, s1)
-    atom2, B2 = get_shell(BS, s2)
-    generate_V_pair(atom1, atom2, B1, B2, BS.atoms)
+function generate_V_pair!(out, BS::BasisSet, s1, s2)
+    generate_V_pair!(out, BS.basis[s1], BS.basis[s2], BS.atoms)
 end
 
-function generate_V_pair(atom1::Atom, atom2::Atom, B1::CartesianShell, B2::CartesianShell, atoms::Vector{<:Atom})
+function generate_V_pair!(out, B1::CartesianShell, B2::CartesianShell, atoms::Vector{<:Atom})
 
-    """ Computes the nuclear attraction integral for a shell pair """
+    out .= 0.0
+
     am1 = B1.l
     am2 = B2.l
     am = am1 + am2
 
-    A = atom1.xyz .* ang2bohr 
-    B = atom2.xyz .* ang2bohr 
+    A = B1.atom.xyz .* ang2bohr
+    B = B2.atom.xyz .* ang2bohr
+
+    N1 = num_basis(B1)
 
     Rmat = similar(A, am + 1, cumulative_cart_dim(am))
     ints = similar(A, cart_dim(am1), cart_dim(am2))
     Rmat .= 0.0
     ints .= 0.0
-
 
     Ex = similar(A, am1 + 1, am2 + 1, am1 + am2 + 2)
     Ey = similar(A, am1 + 1, am2 + 1, am1 + am2 + 2)
@@ -241,7 +222,7 @@ function generate_V_pair(atom1::Atom, atom2::Atom, B1::CartesianShell, B2::Carte
                                         end
                                     end
                                 end
-                                ints[index1, index2] += prefac * val
+                                out[index1 + N1*(index2-1)] += prefac * val
                                 index2 += 1
                             end
                         end
@@ -251,7 +232,7 @@ function generate_V_pair(atom1::Atom, atom2::Atom, B1::CartesianShell, B2::Carte
             end
         end
     end
-    return ints
+    return out
 end
 
 function generate_quanta_list(am::Int)
@@ -268,15 +249,11 @@ function generate_quanta_list(am::Int)
     return vals 
 end
 
-function generate_ERI_quartet(BS::BasisSet{GaussianBasis.ASint}, s1, s2, s3, s4, α::Float64=1.0, β::Float64=0.0, ω::Float64=0.0)
-    generate_ERI_quartet(BS.basis[s1], BS.basis[s2], BS.basis[s3], BS.basis[s4], α, β, ω)
+function generate_ERI_quartet!(out, BS::BasisSet, s1, s2, s3, s4, α::Float64=1.0, β::Float64=0.0, ω::Float64=0.0)
+    generate_ERI_quartet!(out, BS.basis[s1], BS.basis[s2], BS.basis[s3], BS.basis[s4], α, β, ω)
 end
 
-function generate_ERI_quartet(BS::BasisSet{GaussianBasis.LCint}, s1, s2, s3, s4, α::Float64=1.0, β::Float64=0.0, ω::Float64=0.0)
-    generate_ERI_quartet(BS.lib, s1, s2, s3, s4, α, β, ω)
-end
-
-function generate_ERI_quartet(B1::CartesianShell, B2::CartesianShell, B3::CartesianShell, B4::CartesianShell,
+function generate_ERI_quartet!(out, B1::CartesianShell, B2::CartesianShell, B3::CartesianShell, B4::CartesianShell,
                               α::Float64=1.0, β::Float64=0.0, ⍵::Float64=0.0)
 
     """ Generates generalized Coulomb integrals of the form
@@ -284,6 +261,8 @@ function generate_ERI_quartet(B1::CartesianShell, B2::CartesianShell, B3::Cartes
         --------------
               R       
         for a given shell quartet """
+
+    out .= 0.0
 
     atom1 = B1.atom
     atom2 = B2.atom
@@ -296,7 +275,12 @@ function generate_ERI_quartet(B1::CartesianShell, B2::CartesianShell, B3::Cartes
     am3 = B3.l
     am4 = B4.l
     am = am1 + am2 + am3 + am4
-    ints = zeros(T, cart_dim(am1), cart_dim(am2), cart_dim(am3), cart_dim(am4))
+
+    N1   = num_basis(B1)
+    N12  = N1*num_basis(B2)
+    N123 = N12*num_basis(B3)
+    #ints = zeros(T, cart_dim(am1), cart_dim(am2), cart_dim(am3), cart_dim(am4))
+
 
     A = atom1.xyz .* ang2bohr
     B = atom2.xyz .* ang2bohr
@@ -316,6 +300,7 @@ function generate_ERI_quartet(B1::CartesianShell, B2::CartesianShell, B3::Cartes
     iter2 = generate_quanta_list(am2)
     iter3 = generate_quanta_list(am3)
     iter4 = generate_quanta_list(am4)
+
     for (ca, a) in zip(B1.coef, B1.exp)
         for (cb, b) in zip(B2.coef, B2.exp)
             p = a + b
@@ -327,18 +312,21 @@ function generate_ERI_quartet(B1::CartesianShell, B2::CartesianShell, B3::Cartes
                     Q = (c * C + d * D) / q
                     generate_E_matrix!(ket_Ex, ket_Ey, ket_Ez, am3, am4, Q, C, D, c, d)
 
-                    ɑ = p * q / (p + q)
+                    θ = p * q / (p + q)
                     prefac = 2 * π^(5/2) * ca * cb * cc * cd / (p * q * sqrt(p + q))
 
-                    generate_R_matrix!(Rmat, am, ɑ, P, Q, α, β, ⍵)
+                    generate_R_matrix!(Rmat, am, θ, P, Q, α, β, ⍵)
                     for (l1, m1, n1, index1) in iter1
                         for (l2, m2, n2, index2) in iter2
+                            _ij = index1 + N1*(index2-1) 
                             for t = 0 : l1 + l2
                                 for u = 0 : m1 + m2
                                     for v = 0 : n1 + n2
                                         @inbounds Eab = bra_Ex[l1+1, l2+1, t+1] * bra_Ey[m1+1, m2+1, u+1] * bra_Ez[n1+1, n2+1, v+1]
                                         for (l3, m3, n3, index3) in iter3
+                                            _ijk = _ij + N12*(index3-1)
                                             for (l4, m4, n4, index4) in iter4
+                                                idx = _ijk + N123*(index4-1)
                                                 val = 0.0
                                                 for τ = 0 : l3 + l4
                                                     for ν = 0 : m3 + m4
@@ -353,7 +341,7 @@ function generate_ERI_quartet(B1::CartesianShell, B2::CartesianShell, B3::Cartes
                                                         end
                                                     end
                                                 end
-                                                @inbounds ints[index1, index2, index3, index4] += prefac * Eab * val
+                                                @inbounds out[idx] += prefac * Eab * val
                                             end
                                         end
                                     end
@@ -365,7 +353,7 @@ function generate_ERI_quartet(B1::CartesianShell, B2::CartesianShell, B3::Cartes
             end
         end
     end
-    return ints
+    return out
 end
 
 @inline function generate_E_matrix!(Ex, Ey, Ez, maxam1, maxam2,
@@ -448,7 +436,6 @@ end
     return  Fnvals
 end
 
-
 @inline function generate_R_matrix!(R, maxam::Int, p::Float64, P, C,
                            α::Float64=1.0, β::Float64=0.0, ⍵::Float64=0.0)
     """ Makes the Hermite Coulomb integrals from derivatives of the Boys function, by recursion,
@@ -509,334 +496,4 @@ end
     R
 end
 
-function overlap(bs::BasisSet)
-    ao1e(bs, "overlap")
-end
-
-function kinetic(bs::BasisSet)
-    ao1e(bs, "kinetic")
-end
-
-function nuclear(bs::BasisSet)
-    ao1e(bs, "nuclear")
-end
-
-function ao1e(bs::BasisSet, compute)
-    if compute == "overlap"
-        callback = generate_S_pair
-    elseif compute == "kinetic"
-        callback = generate_T_pair
-    elseif compute == "nuclear"
-        callback = generate_V_pair
-    else
-        throw(ArgumentError("Invalid one-eletron integral name: $compute"))
-    end
-
-    # Number of basis per shell
-    Nvals = zeros(Int, bs.nshells)
-    idx = 1
-    for A in 1:bs.natoms
-        for b in bs[A]
-            Nvals[idx] = cart_dim(b.l)
-            idx += 1
-        end
-    end
-    nbf = sum(Nvals)
-    # Pre allocate output
-    out = zeros(nbf, nbf)
-
-    # Offset list for each shell, used to map shell index to AO index
-    ao_offset = [sum(Nvals[1:(i-1)]) for i = 1:bs.nshells]
-
-    @sync for i in 1:bs.nshells
-        Threads.@spawn begin
-            @inbounds begin
-                Ni = Nvals[i]
-                ioff = ao_offset[i]
-                for j in i:bs.nshells
-                    Nj = Nvals[j]
-                    joff = ao_offset[j]
-
-                    # Call libcint
-                    buf = callback(bs, i, j)
-
-                    # Loop through shell block and save unique elements
-                    for js = 1:Nj
-                        J = joff + js
-                        for is = 1:Ni
-                            I = ioff + is
-                            J < I ? break : nothing
-                            out[I,J] = buf[is, js]
-                            out[J,I] = out[I,J]
-                        end
-                    end
-                end
-            end #inbounds
-        end #spawn
-    end #sync
-    return out
-end
-
-# This function is expensive and not optimized. Prefer using the sparse version
-function ERI_2e4c(BS::BasisSet, T::DataType = Float64)
-
-    # Save a list containing the number of basis for each shell
-    Nvals = num_basis.(BS.basis)
-    nbf = sum(Nvals)
-
-    # Offset list for each shell, used to map shell index to AO index
-    #ao_offset = [sum(Nvals[1:(i-1)]) for i = 1:bs.nshells]
-
-    # Get slice corresponding to the address in S where the compute chunk goes
-    ranges = UnitRange{Int64}[]
-    iaccum = 1
-    for i = 1:BS.nshells
-        push!(ranges, iaccum:(iaccum+ Nvals[i] -1))
-        iaccum += Nvals[i]
-    end
-
-    # Allocate output array
-    out = zeros(T, nbf, nbf, nbf, nbf)
-
-    # Find unique (i,j,k,l) combinations given permutational symmetry
-    unique_idx = NTuple{4,Int16}[]
-    N = Int16(BS.nshells - 1)
-    ZERO = zero(Int16)
-    for i = ZERO:N
-        for j = i:N
-            for k = ZERO:N
-                for l = k:N
-                    if index2(i,j) < index2(k,l)
-                        continue
-                    end
-                    push!(unique_idx, (i,j,k,l))
-                end
-            end
-        end
-    end
-
-    # Initialize array for results
-    @sync for (i,j,k,l) in unique_idx
-        Threads.@spawn begin
-            @inbounds begin
-                # Shift indexes (C starts with 0, Julia 1)
-                id, jd, kd, ld = i+1, j+1, k+1, l+1
-                Ni, Nj, Nk, Nl = Nvals[id], Nvals[jd], Nvals[kd], Nvals[ld]
-
-                # Compute ERI
-                buf = generate_ERI_quartet(BS, id, jd, kd, ld)
-
-                # Move results to output array
-                ri, rj, rk, rl = ranges[id], ranges[jd], ranges[kd], ranges[ld]
-                out[ri, rj, rk, rl] .= reshape(buf[1:Ni*Nj*Nk*Nl], (Ni, Nj, Nk, Nl))
-
-                if i != j && k != l && index2(i,j) != index2(k,l)
-                    # i,j permutation
-                    out[rj, ri, rk, rl] .= permutedims(out[ri, rj, rk, rl], (2,1,3,4))
-                    # k,l permutation
-                    out[ri, rj, rl, rk] .= permutedims(out[ri, rj, rk, rl], (1,2,4,3))
-
-                    # i,j + k,l permutatiom
-                    out[rj, ri, rl, rk] .= permutedims(out[ri, rj, rk, rl], (2,1,4,3))
-
-                    # ij, kl permutation
-                    out[rk, rl, ri, rj] .= permutedims(out[ri, rj, rk, rl], (3,4,1,2))
-                    # ij, kl + k,l permutation
-                    out[rl, rk, ri, rj] .= permutedims(out[ri, rj, rk, rl], (4,3,1,2))
-                    # ij, kl + i,j permutation
-                    out[rk, rl, rj, ri] .= permutedims(out[ri, rj, rk, rl], (3,4,2,1))
-                    # ij, kl + i,j + k,l permutation
-                    out[rl, rk, rj, ri] .= permutedims(out[ri, rj, rk, rl], (4,3,2,1))
-
-                elseif k != l && index2(i,j) != index2(k,l)
-                    # k,l permutation
-                    out[ri, rj, rl, rk] .= permutedims(out[ri, rj, rk, rl], (1,2,4,3))
-                    # ij, kl permutation
-                    out[rk, rl, ri, rj] .= permutedims(out[ri, rj, rk, rl], (3,4,1,2))
-                    # ij, kl + k,l permutation
-                    out[rl, rk, ri, rj] .= permutedims(out[ri, rj, rk, rl], (4,3,1,2))
-
-                elseif i != j && index2(i,j) != index2(k,l)
-                    # i,j permutation
-                    out[rj, ri, rk, rl] .= permutedims(out[ri, rj, rk, rl], (2,1,3,4))
-
-                    # ij, kl permutation
-                    out[rk, rl, ri, rj] .= permutedims(out[ri, rj, rk, rl], (3,4,1,2))
-                    # ij, kl + i,j permutation
-                    out[rk, rl, rj, ri] .= permutedims(out[ri, rj, rk, rl], (3,4,2,1))
-        
-                elseif i != j && k != l 
-                    # i,j permutation
-                    out[rj, ri, rk, rl] .= permutedims(out[ri, rj, rk, rl], (2,1,3,4))
-                    # k,l permutation
-                    out[ri, rj, rl, rk] .= permutedims(out[ri, rj, rk, rl], (1,2,4,3))
-
-                    # i,j + k,l permutatiom
-                    out[rj, ri, rl, rk] .= permutedims(out[ri, rj, rk, rl], (2,1,4,3))
-                elseif index2(i,j) != index2(k,l) 
-                    # ij, kl permutation
-                    out[rk, rl, ri, rj] .= permutedims(out[ri, rj, rk, rl], (3,4,1,2))
-                end
-            end #inbounds
-        end #spawn
-    end #sync
-
-    return out
-end
-
-function ovlp_sum(X)
-    atoms = GaussianBasis.Atom[]
-    bs = GaussianBasis.CartesianShell[]
-    r = size(X,1)
-    for i = 1:r
-        push!(atoms, GaussianBasis.Atom(1, 1.0, X[i,:]))
-        bs = vcat(bs, GaussianBasis.read_basisset("sto-3g", "H", spherical=false))
-    end
-    S = generate_ERI_quartet(atoms[1], atoms[2], atoms[1], atoms[3], bs[1], bs[2], bs[1], bs[3])
-    return S[1]
-end
-
-function findif(X, callback)
-    h = 1e-8
-    I,J = size(X)
-    Xp = copy(X)
-    Xm = copy(X)
-    out = zeros(I,J)
-
-    for i = 1:I, j = 1:J
-        Xp[i,j] += h
-        Xm[i,j] -= h
-        out[i,j] = (callback(Xp) - callback(Xm)) / 2h
-        Xp[i,j] -= h
-        Xm[i,j] += h
-    end
-
-    return out
-end
-
-function generate_ERI_quartet(lib, s1, s2, s3, s4,
-                              α::Float64=1.0, β::Float64=0.0, ⍵::Float64=0.0)
-
-    """ Generates generalized Coulomb integrals of the form
-        α + β(erf ⍵ R)
-        --------------
-              R       
-        for a given shell quartet """
-
-    ATM_SLOTS = 6
-    BAS_SLOTS = 8
-
-    T = Float64
-    atom1idx = lib.bas[1 + BAS_SLOTS*(s1-1)]
-    atom2idx = lib.bas[1 + BAS_SLOTS*(s2-1)]
-    atom3idx = lib.bas[1 + BAS_SLOTS*(s3-1)]
-    atom4idx = lib.bas[1 + BAS_SLOTS*(s4-1)]
-
-    xyz_idx_1 = lib.atm[2 + ATM_SLOTS*(atom1idx)]
-    xyz_idx_2 = lib.atm[2 + ATM_SLOTS*(atom2idx)]
-    xyz_idx_3 = lib.atm[2 + ATM_SLOTS*(atom3idx)]
-    xyz_idx_4 = lib.atm[2 + ATM_SLOTS*(atom4idx)]
-
-    A = lib.env[xyz_idx_1+1 : xyz_idx_1+3] 
-    B = lib.env[xyz_idx_2+1 : xyz_idx_2+3] 
-    C = lib.env[xyz_idx_3+1 : xyz_idx_3+3] 
-    D = lib.env[xyz_idx_4+1 : xyz_idx_4+3] 
-
-    am1 = lib.bas[2 + BAS_SLOTS*(s1-1)] |> Int64
-    am2 = lib.bas[2 + BAS_SLOTS*(s2-1)] |> Int64
-    am3 = lib.bas[2 + BAS_SLOTS*(s3-1)] |> Int64
-    am4 = lib.bas[2 + BAS_SLOTS*(s4-1)] |> Int64
-
-    np1 = lib.bas[3 + BAS_SLOTS*(s1-1)]
-    np2 = lib.bas[3 + BAS_SLOTS*(s2-1)]
-    np3 = lib.bas[3 + BAS_SLOTS*(s3-1)]
-    np4 = lib.bas[3 + BAS_SLOTS*(s4-1)]
-
-    exp_idx_1 = lib.bas[6 + BAS_SLOTS*(s1-1)]
-    exp_idx_2 = lib.bas[6 + BAS_SLOTS*(s2-1)]
-    exp_idx_3 = lib.bas[6 + BAS_SLOTS*(s3-1)]
-    exp_idx_4 = lib.bas[6 + BAS_SLOTS*(s4-1)]
-
-    exp1 = lib.env[exp_idx_1+1 : exp_idx_1+np1]
-    exp2 = lib.env[exp_idx_2+1 : exp_idx_2+np2]
-    exp3 = lib.env[exp_idx_3+1 : exp_idx_3+np3]
-    exp4 = lib.env[exp_idx_4+1 : exp_idx_4+np4]
-
-    coef_idx_1 = lib.bas[7 + BAS_SLOTS*(s1-1)]
-    coef_idx_2 = lib.bas[7 + BAS_SLOTS*(s2-1)]
-    coef_idx_3 = lib.bas[7 + BAS_SLOTS*(s3-1)]
-    coef_idx_4 = lib.bas[7 + BAS_SLOTS*(s4-1)]
-
-    coef1 = lib.env[coef_idx_1+1 : coef_idx_1+np1]
-    coef2 = lib.env[coef_idx_2+1 : coef_idx_2+np2]
-    coef3 = lib.env[coef_idx_3+1 : coef_idx_3+np3]
-    coef4 = lib.env[coef_idx_4+1 : coef_idx_4+np4]
-
-    am = am1 + am2 + am3 + am4
-    ints = zeros(T, cart_dim(am1), cart_dim(am2), cart_dim(am3), cart_dim(am4))
-
-    Rmat = zeros(T, am + 1, cumulative_cart_dim(am))
-
-    bra_Ex = zeros(T, am1 + 1, am2 + 1, am1 + am2 + 2)
-    bra_Ey = zeros(T, am1 + 1, am2 + 1, am1 + am2 + 2)
-    bra_Ez = zeros(T, am1 + 1, am2 + 1, am1 + am2 + 2)
-    ket_Ex = zeros(T, am3 + 1, am4 + 1, am3 + am4 + 2)
-    ket_Ey = zeros(T, am3 + 1, am4 + 1, am3 + am4 + 2)
-    ket_Ez = zeros(T, am3 + 1, am4 + 1, am3 + am4 + 2)
-
-    iter1 = generate_quanta_list(am1)
-    iter2 = generate_quanta_list(am2)
-    iter3 = generate_quanta_list(am3)
-    iter4 = generate_quanta_list(am4)
-    for (ca, a) in zip(coef1, exp1)
-        for (cb, b) in zip(coef2, exp2)
-            p = a + b
-            P = (a * A + b * B) / p
-            generate_E_matrix!(bra_Ex, bra_Ey, bra_Ez, am1, am2, P, A, B, a, b)
-            for (cc, c) in zip(coef3, exp3)
-                for (cd, d) in zip(coef4, exp4)
-                    q = c + d
-                    Q = (c * C + d * D) / q
-                    generate_E_matrix!(ket_Ex, ket_Ey, ket_Ez, am3, am4, Q, C, D, c, d)
-
-                    ɑ = p * q / (p + q)
-                    prefac = 2 * π^(5/2) * ca * cb * cc * cd / (p * q * sqrt(p + q))
-
-                    generate_R_matrix!(Rmat, am, ɑ, P, Q, α, β, ⍵)
-                    for (l1, m1, n1, index1) in iter1
-                        for (l2, m2, n2, index2) in iter2
-                            for t = 0 : l1 + l2
-                                for u = 0 : m1 + m2
-                                    for v = 0 : n1 + n2
-                                        @inbounds Eab = bra_Ex[l1+1, l2+1, t+1] * bra_Ey[m1+1, m2+1, u+1] * bra_Ez[n1+1, n2+1, v+1]
-                                        for (l3, m3, n3, index3) in iter3
-                                            for (l4, m4, n4, index4) in iter4
-                                                val = 0.0
-                                                for τ = 0 : l3 + l4
-                                                    for ν = 0 : m3 + m4
-                                                        for φ = 0 : n3 + n4
-                                                            @inbounds @fastmath Ecd = ket_Ex[l3+1, l4+1, τ+1] * ket_Ey[m3+1, m4+1, ν+1] * ket_Ez[n3+1, n4+1, φ+1]
-                                                            # eqn. 9.9.33
-                                                            if isodd(τ+ν+φ)
-                                                                @inbounds @fastmath val -= Ecd * Rmat[1, addr(t + τ, u + ν, v + φ, am)]
-                                                            else
-                                                                @inbounds @fastmath val += Ecd * Rmat[1, addr(t + τ, u + ν, v + φ, am)]
-                                                            end
-                                                        end
-                                                    end
-                                                end
-                                                @inbounds ints[index1, index2, index3, index4] += prefac * Eab * val
-                                            end
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-    return ints
-end
 end #module

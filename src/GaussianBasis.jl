@@ -90,10 +90,23 @@ BasisFunction(l, coef, exp, atom) = SphericalShell(l,coef,exp, atom)
 num_basis(B::CartesianShell) = ((B.l + 1) * (B.l + 2)) ÷ 2
 num_basis(B::SphericalShell) = 2*B.l + 1
 
+function index2(i, j)
+    if i < j
+        return (j * (j + 1)) >> 1 + i
+    else
+        return (i * (i + 1)) >> 1 + j
+    end
+end
+
+function index4(i,j,k,l)
+    return index2(index2(i,j), index2(k,l))
+end
+
 include("BasisParser.jl")
 include("BasisSet.jl")
 include("Misc.jl")
 include("Libcint.jl")
+include("Acsint.jl")
 include("Integrals.jl")
 include("Gradients.jl")
 

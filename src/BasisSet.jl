@@ -4,8 +4,8 @@ import Base: getindex, show
 
 # struct with backend specific data for integral computation
 abstract type IntLib end
-# struct flag for computations using Asint.jl
-struct ASint <: IntLib end
+# struct flag for computations using Acsint.jl
+struct ACSint <: IntLib end
 # struct flag for computations using Libcint.jl
 struct LCint <: IntLib 
     atm::Vector{Cint}
@@ -210,7 +210,7 @@ function BasisSet(name::String, atoms::Vector{<:Atom}, basis::Vector{<:BasisFunc
 
     if lib == :asint
 
-        return BasisSet(name, atoms, basis, bpa, spa, natm, nbas, nshells, ASint())
+        return BasisSet(name, atoms, basis, bpa, spa, natm, nbas, nshells, ACSint())
 
     elseif lib == :libcint
 

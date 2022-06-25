@@ -39,7 +39,7 @@ Current features include:
 - Two-electrons four-center integral (2e4c)
 - Gradients (currrently under construction - *watch out!*)
 
-Integral computations use by default the integral library [libcint](https://github.com/sunqm/libcint) *via* [libcint_jll.jl](https://github.com/JuliaBinaryWrappers/libcint_jll.jl). A simple Julia-written integral module `Asint.jl` is also available, but it is significant slower than the `libcint`.  
+Integral computations use by default the integral library [libcint](https://github.com/sunqm/libcint) *via* [libcint_jll.jl](https://github.com/JuliaBinaryWrappers/libcint_jll.jl). A simple Julia-written integral module `Acsint.jl` is also available, but it is significant slower than the `libcint`.  
 
 # Basic Usage
 
