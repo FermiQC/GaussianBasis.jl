@@ -2,90 +2,7 @@ using GaussianBasis
 using Combinatorics: doublefactorial
 import Base: getindex, show
 
-# struct with backend specific data for integral computation
-abstract type IntLib end
-# struct flag for computations using Acsint.jl
-struct ACSint <: IntLib end
-# struct flag for computations using Libcint.jl
-struct LCint <: IntLib 
-    atm::Vector{Cint}
-    natm::Cint
-    bas::Vector{Cint}
-    nbas::Cint
-    env::Vector{Cdouble}
-end
-
-function LCint(atoms::Vector{<:Atom}, basis::Vector{<:BasisFunction})
-    ATM_SLOTS = 6
-    BAS_SLOTS = 8
-
-    natm = length(atoms)
-
-    nshells = length(basis)
-    nbas    = 0
-    nexps   = 0
-    nprims  = 0
-
-    for i in eachindex(atoms)
-        for b in basis
-            if b.atom == atoms[i]
-                nbas    += num_basis(b)
-                nexps   += length(b.exp)
-                nprims  += length(b.coef)
-            end
-        end
-    end
-
-    lc_atm = zeros(Cint, natm*ATM_SLOTS)
-    lc_bas = zeros(Cint, nshells*BAS_SLOTS)
-    env = zeros(Cdouble, 20+4*natm+nexps+nprims)
-
-    # Prepare the lc_atom input 
-    off = 20
-    ib = 0 
-    for i = eachindex(atoms)
-        A = atoms[i]
-        # lc_atom has ATM_SLOTS (6) "spaces" for each atom
-        # The first one (Z_INDEX) is the atomic number
-        lc_atm[1 + ATM_SLOTS*(i-1)] = A.Z
-        # The second one is the env index address for xyz
-        lc_atm[2 + ATM_SLOTS*(i-1)] = off
-        env[off+1:off+3] .= A.xyz ./ Molecules.bohr_to_angstrom
-        off += 4 # Skip an extra slot for the kappa (nuclear model parameter)
-        # The remaining 4 slots are zero.
-
-        for j = eachindex(basis)
-            B = basis[j]
-            if B.atom != A
-                continue
-            end
-            Ne = length(B.exp)
-            Nc = length(B.coef)
-            # lc_bas has BAS_SLOTS for each basis set
-            # The first one is the index of the atom starting from 0
-            lc_bas[1 + BAS_SLOTS*ib] = i-1
-            # The second one is the angular momentum
-            lc_bas[2 + BAS_SLOTS*ib] = B.l
-            # The third is the number of primitive functions
-            lc_bas[3 + BAS_SLOTS*ib] = Nc
-            # The fourth is the number of contracted functions
-            lc_bas[4 + BAS_SLOTS*ib] = 1
-            # The fifth is a κ parameter
-            lc_bas[5 + BAS_SLOTS*ib] = 0
-            # Sixth is the env index address for exponents
-            lc_bas[6 + BAS_SLOTS*ib] = off
-            env[off+1:off+Ne] .= B.exp
-            off += Ne
-            # Seventh is the env index address for contraction coeff
-            lc_bas[7 + BAS_SLOTS*ib] = off
-            env[off+1:off+Nc] .= B.coef
-            off += Nc
-            # Eigth, nothing
-            ib += 1
-        end
-    end
-    return LCint(lc_atm, Cint(natm), lc_bas, Cint(nbas), env)
-end
+include("Libs.jl")
 
 @doc raw"""
     BasisSet
@@ -208,7 +125,7 @@ function BasisSet(name::String, atoms::Vector{<:Atom}, basis::Vector{<:BasisFunc
     end
     nbas = sum(bpa)
 
-    if lib == :asint
+    if lib == :acsint
 
         return BasisSet(name, atoms, basis, bpa, spa, natm, nbas, nshells, ACSint())
 
