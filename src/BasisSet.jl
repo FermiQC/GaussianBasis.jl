@@ -1,6 +1,15 @@
 using GaussianBasis
 using Combinatorics: doublefactorial
 import Base: getindex, show
+using ForwardDiff: Dual, value
+
+function get_dual_val(x::Dual{T,V,N} where {T,V,N})
+    val = copy(x)
+    while typeof(val) <: Dual{T,V,N} where {T,V,N}
+        val = value(val)
+    end
+    return val
+end
 
 @doc raw"""
     BasisSet
@@ -137,8 +146,8 @@ function BasisSet(name::String, atoms::Vector{<:Atom}, basis::Vector{<:Vector{<:
 
     lc_atm = zeros(Cint, natm*ATM_SLOTS)
     lc_bas = zeros(Cint, nshells*BAS_SLOTS)
-    #env = zeros(Cdouble, 20+4*natm+nexps+nprims)
-    env = zeros(eltype(atoms[1].xyz), 20+4*natm+nexps+nprims)
+    env = zeros(Cdouble, 20+4*natm+nexps+nprims)
+    # env = zeros(eltype(atoms[1].xyz), 20+4*natm+nexps+nprims)
 
     # Prepare the lc_atom input 
     off = 20
@@ -150,7 +159,9 @@ function BasisSet(name::String, atoms::Vector{<:Atom}, basis::Vector{<:Vector{<:
         lc_atm[1 + ATM_SLOTS*(i-1)] = A.Z
         # The second one is the env index address for xyz
         lc_atm[2 + ATM_SLOTS*(i-1)] = off
-        env[off+1:off+3] .= A.xyz ./ Molecules.bohr_to_angstrom
+        eltype(A.xyz) <: Dual{T,V,N} where {T,V,N} ? env[off+1:off+3] .= get_dual_val.(A.xyz) : env[off+1:off+3] .= A.xyz
+        env[off+1:off+3] ./= Molecules.bohr_to_angstrom
+        # env[off+1:off+3] .= A.xyz ./ Molecules.bohr_to_angstrom
         off += 4 # Skip an extra slot for the kappa (nuclear model parameter)
         # The remaining 4 slots are zero.
 

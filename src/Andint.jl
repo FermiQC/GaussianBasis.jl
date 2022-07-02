@@ -9,7 +9,9 @@ using LinearAlgebra: norm, eigen
 using StaticArrays
 using SIMD
 
+using ForwardDiff
 import ForwardDiff: Dual, partials, value
+import Base.round
 #using Tullio: @tullio
 #using Printf: @printf
 
@@ -274,7 +276,7 @@ function generate_ERI_quartet(BS::BasisSet, s1, s2, s3, s4, α::Float64=1.0, β:
     atom3, B3 = get_shell(BS, s3)
     atom4, B4 = get_shell(BS, s4)
 
-    generate_ERI_quartet(atom1, atom2, atom3, atom4, B1, B2, B3, B4, α, β, ω)
+    generate_ERI_quartet(atom1, atom2, atom3, atom4, B1, B2, B3, B4, α, β, ⍵)
 end
 
 function generate_ERI_quartet(atom1::Atom, atom2::Atom, atom3::Atom, atom4::Atom, 
@@ -425,7 +427,7 @@ end
     δ = ⍵^2 / (⍵^2 + α)
     TT = T * δ
 
-    Fnmax = if T == 0.0 
+    Fnmax = if T < 1e-20 
         1.0 / (2 * nmax + 1)
     else 
         gamma(nmax + 0.5) * gamma_inc(nmax + 0.5, TT)[1] / (2 * TT ^ (nmax + 0.5))
@@ -453,7 +455,8 @@ end
         α + β(erf ⍵ R)
         --------------
               R       """
-    PC = P - C
+    PC = Vector{eltype(P)}(undef,3)
+    PC .= P - C
     RPC = norm(PC)
     T = p * RPC ^ 2
     R .= 0
@@ -540,7 +543,7 @@ function ao1e(bs::BasisSet, compute)
     end
     nbf = sum(Nvals)
     # Pre allocate output
-    out = zeros(nbf, nbf)
+    out = zeros(Real, nbf, nbf)
 
     # Offset list for each shell, used to map shell index to AO index
     ao_offset = [sum(Nvals[1:(i-1)]) for i = 1:bs.nshells]
@@ -692,17 +695,23 @@ function ovlp_sum(X)
     atoms = GaussianBasis.Atom[]
     bs = GaussianBasis.CartesianShell[]
     r = size(X,1)
-    for i = 1:r
+    push!(atoms, GaussianBasis.Atom(8, 15.999, X[1,:]))
+    bs = vcat(bs, GaussianBasis.read_basisset("sto-3g", "O", spherical=false))
+    for i = 2:r
         push!(atoms, GaussianBasis.Atom(1, 1.0, X[i,:]))
         bs = vcat(bs, GaussianBasis.read_basisset("sto-3g", "H", spherical=false))
     end
-    S = generate_ERI_quartet(atoms[1], atoms[2], atoms[1], atoms[3], bs[1], bs[2], bs[1], bs[3])
-    #S = GaussianBasis.Andint.generate_V_pair(atoms[1], atoms[2], bs[1], bs[2], atoms)
-    #S = GaussianBasis.Andint.generate_S_pair(atoms[1], atoms[2], bs[1], bs[2])
-    return S[1]
+     # bs = GaussianBasis.BasisSet("sto-3g", atoms, spherical=false)
+    # println.(bs)
+    # S = nuclear(bs)
+    # S = ERI_2e4c(bs, eltype(X))
+    # S = generate_ERI_quartet(atoms[1], atoms[2], atoms[1], atoms[2], bs[3], bs[4], bs[3], bs[4])
+    S = GaussianBasis.Andint.generate_V_pair(atoms[1], atoms[2], bs[3], bs[4], atoms)
+    # S = GaussianBasis.Andint.generate_S_pair(atoms[1], atoms[2], bs[3], bs[4])
+    return first(S)
 end
 
-function findif(X, callback)
+function findif_grad(X, callback)
     h = 1e-8
     I,J = size(X)
     Xp = copy(X)
@@ -718,6 +727,26 @@ function findif(X, callback)
     end
 
     return out
+end
+
+function findif_hess(X, callback, h = 1e-5)
+    n = length(X)
+    out = zeros(n, n)
+    disp = copy(X)
+
+    for i in 1:n
+        disp[i] += h
+        g = ForwardDiff.gradient(callback, disp)
+        out[i,:] .+= vec(g)
+        out[:,i] .+= vec(g)
+        disp[i] -= 2*h
+        g = ForwardDiff.gradient(callback, disp)
+        out[i,:] .-= vec(g)
+        out[:,i] .-= vec(g)
+        disp[i] += h
+    end
+
+    return out ./ (4*h)
 end
 
 end #module
