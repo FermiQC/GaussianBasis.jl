@@ -427,7 +427,7 @@ end
     δ = ⍵^2 / (⍵^2 + α)
     TT = T * δ
 
-    Fnmax = if T < 1e-20 
+    Fnmax = if T < 1e-20    # T ≈ 0
         1.0 / (2 * nmax + 1)
     else 
         gamma(nmax + 0.5) * gamma_inc(nmax + 0.5, TT)[1] / (2 * TT ^ (nmax + 0.5))
@@ -455,7 +455,7 @@ end
         α + β(erf ⍵ R)
         --------------
               R       """
-    PC = Vector{eltype(P)}(undef,3)
+    PC = Vector{eltype(P)}(undef,3)     # Preallocation needed for Duals 
     PC .= P - C
     RPC = norm(PC)
     T = p * RPC ^ 2
