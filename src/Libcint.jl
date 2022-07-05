@@ -176,6 +176,9 @@ function cint1e_r_sph!(buf, shls, atm, natm, bas, nbas, env)
                                     env  :: Ptr{Cdouble}
                                    )::Cvoid
 end
+function cint1e_r_sph!(buf::Array{Cdouble}, shls::Array{<:Integer}, lib::LCint) 
+    cint1e_r_sph!(buf, Cint.(shls.-1), lib.atm, lib.natm, lib.bas, lib.nbas, lib.env)
+end
 
 function cint1e_rr_sph!(buf, shls, atm, natm, bas, nbas, env)
     @ccall LIBCINT.cint1e_rr_sph(
