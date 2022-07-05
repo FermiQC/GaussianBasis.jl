@@ -1,11 +1,15 @@
 # Given a list of atoms, create a cartesian displamentent in one of them (A)
 function create_displacement(BS::BasisSet, A::Int, i::Int, h)
 
+    disp = zeros(3)
+    disp[i] += h
+    Z, m, xyz = BS.atoms[A].Z, BS.atoms[A].mass, BS.atoms[A].xyz
+
     Aplus = deepcopy(BS.atoms)
-    Aplus[A].xyz[i] += h
+    Aplus[A] = Atom(Z, m, xyz + disp)
 
     Aminus = deepcopy(BS.atoms)
-    Aminus[A].xyz[i] -= h
+    Aminus[A] = Atom(Z, m, xyz - disp)
 
     bs_plus = BasisSet(BS.name, Aplus)
     bs_minus = BasisSet(BS.name, Aminus)
