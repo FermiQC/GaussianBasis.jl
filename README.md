@@ -1,14 +1,33 @@
-# GaussianBasis.jl
-[![CI](https://github.com/FermiQC/GaussianBasis.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/FermiQC/GaussianBasis.jl/actions/workflows/CI.yml)
-[![codecov](https://codecov.io/gh/FermiQC/GaussianBasis.jl/branch/main/graph/badge.svg?token=JNouJPwoHm)](https://codecov.io/gh/FermiQC/GaussianBasis.jl)
+<p align="center">
+  <img src="assets/gblogo.png" width="600" alt=""/>
+</p>
 
-GaussianBasis offers a high-level wrap around the integral library [libcint](https://github.com/sunqm/libcint) *via* [libcint_jll.jl](https://github.com/JuliaBinaryWrappers/libcint_jll.jl). 
+<table align="center">
+  <tr>
+    <th>CI</th>
+    <th>Coverage</th>
+    <th>License</th>
+  </tr>
+  <tr>
+    <td align="center">
+      <a href=https://github.com/FermiQC/GaussianBasis.jl/actions/workflows/CI.yml>
+      <img src=https://github.com/FermiQC/GaussianBasis.jl/actions/workflows/CI.yml/badge.svg>
+      </a> 
+    </td>
+    <td align="center">
+      <a href=https://codecov.io/gh/FermiQC/GaussianBasis.jl>
+      <img src=https://codecov.io/gh/FermiQC/GaussianBasis.jl/branch/main/graph/badge.svg?token=JNouJPwoHm>
+      </a> 
+    </td>
+    <td align="center">
+      <a href=https://github.com/FermiQC/GaussianBasis.jl/blob/main/LICENSE>
+      <img src=https://img.shields.io/badge/License-MIT-blue.svg>
+      </a>
+    </td>
+  </tr>
+</table>
 
-Install it using Julia's pkg manager:
-
-```julia
-pkg> add GaussianBasis
-```
+GaussianBasis offers high-level utilities for molecular integral computations.
 
 Current features include:
 
@@ -19,6 +38,8 @@ Current features include:
 - Two-electrons three-center integral (2e3c)
 - Two-electrons four-center integral (2e4c)
 - Gradients (currrently under construction - *watch out!*)
+
+Integral computations use by default the integral library [libcint](https://github.com/sunqm/libcint) *via* [libcint_jll.jl](https://github.com/JuliaBinaryWrappers/libcint_jll.jl). A simple Julia-written integral module `Acsint.jl` is also available, but it is significant slower than the `libcint`.  
 
 # Basic Usage
 

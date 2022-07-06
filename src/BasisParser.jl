@@ -13,12 +13,17 @@ const AMDict = Dict(
     )
 
 """
-    GaussinBasis.read_basisset(bname::String, AtomSymbol::String)
+    GaussinBasis.read_basisset(bname::String, atom::atom; spherical=true)
 
-Returns an array of BasisFunction objects given an atom (AtomicSymbol) and basis set name (bname).
+Returns an array of BasisFunction objects for the given `Atom` and basis set name (bname).
+By default, functions are normalized as Spherical functions (spherical=true). If spherical is set to false,
+Cartesian functions are returned instead. 
 """
-function read_basisset(bname::String, AtomSymbol::String; spherical=true)
+function read_basisset(bname::String, atom::A; spherical=true) where A <: Atom
 
+    AtomSymbol = Molecules.symbol(atom) 
+
+    # Transform basis name to file name e.g. 6-31g* => 6-31g_st_
     clean_bname = replace(bname, "*"=>"_st_")
     file_path = joinpath(LIBPATH, clean_bname*".gbs")
 
@@ -26,9 +31,10 @@ function read_basisset(bname::String, AtomSymbol::String; spherical=true)
         throw(ArgumentError("Basis set file for $bname was not found."))
     end
 
+    # Fetch the block of the basis set file regarding the given atom 
     info = extract_atom_from_bs(file_path, AtomSymbol)
 
-    # Split info into basis
+    # Split info into strings for individual basis functions
     BasisStrings = [info[1]*"\n"]
     for line in info[2:end]
         if occursin(AM_pat, line)
@@ -38,19 +44,16 @@ function read_basisset(bname::String, AtomSymbol::String; spherical=true)
         end
     end
 
+    # Parse each string into a basis function object
     out = BasisFunction[]
-
     for b in BasisStrings
         r = r"[SPDFGHI]{2}"
         if occursin(r, b)
-            bf1, bf2 = two_basis_from_string(b, spherical=spherical)
-            normalize_basisfunction!(bf1)
-            normalize_basisfunction!(bf2)
+            bf1, bf2 = two_basis_from_string(b, atom, spherical=spherical)
             push!(out, bf1)
             push!(out, bf2)
         else
-            bf = basis_from_string(b, spherical=spherical)
-            normalize_basisfunction!(bf)
+            bf = basis_from_string(b, atom, spherical=spherical)
             push!(out, bf)
         end
     end
@@ -94,12 +97,13 @@ function extract_atom_from_bs(file_path::String, AtomSymbol::String)
 end
 
 """
-    GaussinBasis.basis_from_string(bstring::String)
+    GaussinBasis.basis_from_string(bstring::String, atom::A; spherical=true) where A <: Atom
 
-From a String block representing a Basis Function in gbs format, produces a BasisFunction object.
-For the special case of two basis being described within the same block (e.g. SP blocks) see `two_basis_from_string`
+From a String block representing two Basis Function (e.g. SP blocks) in gbs format, returns a
+`BasisFunction` object. For the special case of two basis being described within the 
+same block (e.g. SP blocks) see `two_basis_from_string`
 """
-function basis_from_string(bstring::String; spherical=true)
+function basis_from_string(bstring::String, atom::A; spherical=true) where A <: Atom
     lines = split(strip(bstring), "\n")
     head = lines[1]
     m = match(AM_pat, head)
@@ -128,19 +132,25 @@ function basis_from_string(bstring::String; spherical=true)
     end
 
     if spherical
-        return SphericalShell(l, coef, exp)
+        normalize_spherical!(coef, exp, l)
+        coef = SVector{nprim}(coef)
+        exp = SVector{nprim}(exp)
+        return SphericalShell(l, coef, exp, atom)
     else
-        return CartesianShell(l, coef, exp)
+        normalize_cartesian!(coef, exp, l)
+        coef = SVector{nprim}(coef)
+        exp = SVector{nprim}(exp)
+        return CartesianShell(l, coef, exp, atom)
     end
 end
 
 """
-    GaussinBasis.two_basis_from_string(bstring::String)
+    GaussinBasis.two_basis_from_string(bstring::String, atom::A; spherical=true) where A <: Atom
 
-From a String block representing two Basis Function (e.g. SP blocks) in gbs format, produces two BasisFunction objects.
-For the case of a single basis being described within the block see `basis_from_string`
+From a String block representing two Basis Function (e.g. SP blocks) in gbs format, returns a
+`BasisFunction` object. For the case of a single basis being described within the block see `basis_from_string`
 """
-function two_basis_from_string(bstring::String; spherical=true)
+function two_basis_from_string(bstring::String, atom::A; spherical=true) where A <: Atom
     lines = split(strip(bstring), "\n")
     head = lines[1]
     m = match(AM_pat, head)
@@ -175,8 +185,18 @@ function two_basis_from_string(bstring::String; spherical=true)
     end
 
     if spherical
-        return SphericalShell(l1, coef1, exp), SphericalShell(l2, coef2, exp)
+        normalize_spherical!(coef1, exp, l1)
+        normalize_spherical!(coef2, exp, l2)
+        coef1 = SVector{nprim}(coef1)
+        coef2 = SVector{nprim}(coef2)
+        exp   = SVector{nprim}(exp)
+        return SphericalShell(l1, coef1, exp, atom), SphericalShell(l2, coef2, exp, atom)
     else
-        return CartesianShell(l1, coef1, exp), CartesianShell(l2, coef2, exp)
+        normalize_cartesian!(coef1, exp, l1)
+        normalize_cartesian!(coef2, exp, l2)
+        coef1 = SVector{nprim}(coef1)
+        coef2 = SVector{nprim}(coef2)
+        exp   = SVector{nprim}(exp)
+        return CartesianShell(l1, coef1, exp, atom), CartesianShell(l2, coef2, exp, atom)
     end
 end
