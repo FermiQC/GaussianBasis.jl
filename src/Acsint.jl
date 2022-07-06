@@ -15,7 +15,7 @@ export generate_ERI_quartet!, generate_S_pair!, generate_T_pair!, generate_V_pai
 const ang2bohr = 1.8897261246257702
 
 # This is needed for AD
-# Once this is implemented into ForwardDif.jl we can remove it from here
+# Once this is implemented into ForwardDiff.jl we can remove it from here
 # Credits to David Widmann in
 # https://github.com/JuliaDiff/ForwardDiff.jl/pull/587/files
 function SpecialFunctions.gamma_inc(a::Real, d::Dual{T,<:Real}, ind::Integer) where {T}
@@ -416,7 +416,7 @@ end
     δ = ⍵^2 / (⍵^2 + α)
     TT = T * δ
 
-    Fnmax = if T == 0.0 
+    Fnmax = if T < 1e-20    # T ≈ 0
         1.0 / (2 * nmax + 1)
     else 
         gamma(nmax + 0.5) * gamma_inc(nmax + 0.5, TT)[1] / (2 * TT ^ (nmax + 0.5))
@@ -443,7 +443,8 @@ end
         α + β(erf ⍵ R)
         --------------
               R       """
-    PC = P - C
+    PC = Vector{eltype(P)}(undef,3)     # Preallocation needed for Duals 
+    PC .= P - C
     RPC = norm(PC)
     T = p * RPC ^ 2
     R .= 0
