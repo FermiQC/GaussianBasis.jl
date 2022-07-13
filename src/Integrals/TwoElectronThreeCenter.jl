@@ -1,131 +1,114 @@
-function ERI_2e3c(BS::BasisSet, auxBS::BasisSet, T::DataType = Float64)
+const _ghostBF = CartesianShell(0, SVector(1.0), SVector(0.0), Atom(1, 1.0, [0.0, 0.0, 0.0]))
 
-    ATM_SLOTS = 6
-    BAS_SLOTS = 8
+function ERI_2e3c!(out, BS::BasisSet{LCint}, i, j, k)
+    cint3c2e_sph!(out, [i,j,k], BS.lib)
+end
 
-    natm = BS.natoms
-    nbas = BS.nbas + auxBS.nbas
-    nshells = BS.nshells + auxBS.nshells
+function ERI_2e3c!(out, BS1::BasisSet, BS2::BasisSet, i, j, k)
+    generate_ERI_quartet!(out, BS1.basis[i], BS1.basis[j], BS2.basis[k], _ghostBF)
+end
 
-    lc_atm = zeros(Cint, natm*ATM_SLOTS)
-    lc_bas = zeros(Cint, nshells*BAS_SLOTS)
-    env = zeros(Cdouble, length(BS.lc_env) + length(auxBS.lc_env) - 3*natm)
+function ERI_2e3c(BS1::BasisSet, BS2::BasisSet)
+    out = zeros(BS1.nbas, BS1.nbas, BS2.nbas)
+    ERI_2e3c!(out, BS1, BS2)
+end
 
-    # Prepare the lc_atom input 
-    off = 0
-    ib = 0 
-    for i = eachindex(BS.atoms)
-        A = BS.atoms[i]
-        # lc_atom has ATM_SLOTS (6) "spaces" for each atom
-        # The first one (Z_INDEX) is the atomic number
-        lc_atm[1 + ATM_SLOTS*(i-1)] = Cint(A.Z)
-        # The second one is the env index address for xyz
-        lc_atm[2 + ATM_SLOTS*(i-1)] = off
-        env[off+1:off+3] .= A.xyz ./ Molecules.bohr_to_angstrom
-        off += 3
-        # The remaining 4 slots are zero.
-    end
+function ERI_2e3c!(out, BS1::BasisSet, BS2::BasisSet)
 
-    for i = eachindex(BS.atoms)
-        # Prepare the lc_bas input
-        for j = eachindex(BS.basis[i])
-            B = BS[i][j] 
-            Ne = length(B.exp)
-            Nc = length(B.coef)
-            # lc_bas has BAS_SLOTS for each basis set
-            # The first one is the index of the atom starting from 0
-            lc_bas[1 + BAS_SLOTS*ib] = i-1
-            # The second one is the angular momentum
-            lc_bas[2 + BAS_SLOTS*ib] = B.l
-            # The third is the number of primitive functions
-            lc_bas[3 + BAS_SLOTS*ib] = Nc
-            # The fourth is the number of contracted functions
-            lc_bas[4 + BAS_SLOTS*ib] = 1
-            # The fifth is a κ parameter
-            lc_bas[5 + BAS_SLOTS*ib] = 0
-            # Sixth is the env index address for exponents
-            lc_bas[6 + BAS_SLOTS*ib] = off
-            env[off+1:off+Ne] .= B.exp
-            off += Ne
-            # Seventh is the env index address for contraction coeff
-            lc_bas[7 + BAS_SLOTS*ib] = off
-            env[off+1:off+Nc] .= B.coef
-            off += Nc
-            # Eigth, nothing
-            ib += 1
-        end
-    end
+    # Pre compute number of basis per shell
+    Nvals1 = num_basis.(BS1.basis)
+    Nvals2 = num_basis.(BS2.basis)
+    Nmax1 = maximum(Nvals1)
+    Nmax2 = maximum(Nvals2)
 
-    for i = eachindex(auxBS.atoms)
-        # Prepare the lc_bas input
-        for j = eachindex(auxBS.basis[i])
-            B = auxBS[i][j] 
-            Ne = length(B.exp)
-            Nc = length(B.coef)
-            # lc_bas has BAS_SLOTS for each basis set
-            # The first one is the index of the atom starting from 0
-            lc_bas[1 + BAS_SLOTS*ib] = i-1
-            # The second one is the angular momentum
-            lc_bas[2 + BAS_SLOTS*ib] = B.l
-            # The third is the number of primitive functions
-            lc_bas[3 + BAS_SLOTS*ib] = Nc
-            # The fourth is the number of contracted functions
-            lc_bas[4 + BAS_SLOTS*ib] = 1
-            # The fifth is a κ parameter
-            lc_bas[5 + BAS_SLOTS*ib] = 0
-            # Sixth is the env index address for exponents
-            lc_bas[6 + BAS_SLOTS*ib] = off
-            env[off+1:off+Ne] .= B.exp
-            off += Ne
-            # Seventh is the env index address for contraction coeff
-            lc_bas[7 + BAS_SLOTS*ib] = off
-            env[off+1:off+Nc] .= B.coef
-            off += Nc
-            # Eigth, nothing
-            ib += 1
-        end
-    end
+    # Offset list for each shell, used to map shell index to AO index
+    ao_offset1 = [sum(Nvals1[1:(i-1)]) for i = 1:BS1.nshells]
+    ao_offset2 = [sum(Nvals2[1:(i-1)]) for i = 1:BS2.nshells]
 
-    # Allocate output array
-    #N = (BS.nbas^2 + BS.nbas) >> 1
-    #out = zeros(T, N, auxBS.nbas)
-    out = zeros(T, BS.nbas, BS.nbas, auxBS.nbas)
+    buf_arrays = [zeros(Cdouble, Nmax1^2*Nmax2) for _ = 1:Threads.nthreads()]
 
-    # Save a list containing the angular momentum number for each shell
-    lvals = [Libcint.CINTcgtos_spheric(i-1, BS.lc_bas) for i = 1:BS.nshells]
-    Plvals = [Libcint.CINTcgtos_spheric(P-1, auxBS.lc_bas) for P = 1:auxBS.nshells]
-    ao_offset = [sum(lvals[1:(i-1)]) for i = 1:BS.nshells]
-
-
-    buf_arrays = [zeros(Cdouble, maximum(lvals)^2*maximum(Plvals)) for _ = 1:Threads.nthreads()]
-
-    @sync for p in 1:auxBS.nshells
+    @sync for k in 1:BS2.nshells
         Threads.@spawn begin
             @inbounds begin
                 buf = buf_arrays[Threads.threadid()]
-                Lp = Plvals[p]
-                poff = sum(Plvals[1:(p-1)])
-                Bp = p + BS.nshells - 1
-                for i in 1:BS.nshells
-                    Li = lvals[i]
-                    ioff = ao_offset[i]
-                    for j in i:BS.nshells
-                        Lj = lvals[j]
-                        joff = ao_offset[j]
+                Nk = Nvals2[k]
+                koff = ao_offset2[k]
+                for i in 1:BS1.nshells
+                    Ni = Nvals1[i]
+                    ioff = ao_offset1[i]
+                    for j in i:BS1.nshells
+                        Nj = Nvals1[j]
+                        joff = ao_offset1[j]
 
                         # Call libcint
-                        cint3c2e_sph!(buf, Cint.([i-1, j-1, Bp]), lc_atm, natm, lc_bas, nbas, env)
+                        ERI_2e3c!(buf, BS1, BS2, i, j, k) 
 
                         # Loop through shell block and save unique elements
-                        for ps = 1:Lp
-                            P = poff + ps
-                            for js = 1:Lj
+                        for ks = 1:Nk
+                            K = koff + ks
+                            for js = 1:Nj
                                 J = joff + js
-                                for is = 1:Li
+                                for is = 1:Ni
                                     I = ioff + is
                                     J < I ? break : nothing
-                                    out[I,J,P] = buf[is + Li*(js-1) + Li*Lj*(ps-1)]
-                                    out[J,I,P] = out[I,J,P]
+                                    out[I,J,K] = buf[is + Ni*(js-1) + Ni*Nj*(ks-1)]
+                                    out[J,I,K] = out[I,J,K]
+                                end
+                            end
+                        end
+                    end
+                end
+            end #inbounds
+        end #spwan
+    end #sync
+    return out
+end
+
+function ERI_2e3c!(out, BS1::BasisSet{LCint}, BS2::BasisSet{LCint})
+
+    atoms = unique(vcat(BS1.atoms, BS2.atoms))
+    basis = vcat(BS1.basis, BS2.basis)
+
+    Bmerged = BasisSet("$(BS1.name*BS2.name)", atoms, basis)
+
+    # Pre compute number of basis per shell
+    Nvals1 = num_basis.(BS1.basis)
+    Nvals2 = num_basis.(BS2.basis)
+    Nmax1 = maximum(Nvals1)
+    Nmax2 = maximum(Nvals2)
+
+    # Offset list for each shell, used to map shell index to AO index
+    ao_offset1 = [sum(Nvals1[1:(i-1)]) for i = 1:BS1.nshells]
+    ao_offset2 = [sum(Nvals2[1:(i-1)]) for i = 1:BS2.nshells]
+
+    buf_arrays = [zeros(Cdouble, Nmax1^2*Nmax2) for _ = 1:Threads.nthreads()]
+
+    @sync for k in 1:BS2.nshells
+        Threads.@spawn begin
+            @inbounds begin
+                buf = buf_arrays[Threads.threadid()]
+                Nk = Nvals2[k]
+                koff = ao_offset2[k]
+                for i in 1:BS1.nshells
+                    Ni = Nvals1[i]
+                    ioff = ao_offset1[i]
+                    for j in i:BS1.nshells
+                        Nj = Nvals1[j]
+                        joff = ao_offset1[j]
+
+                        # Call libcint
+                        ERI_2e3c!(buf, Bmerged, i, j, k+BS1.nshells) 
+
+                        # Loop through shell block and save unique elements
+                        for ks = 1:Nk
+                            K = koff + ks
+                            for js = 1:Nj
+                                J = joff + js
+                                for is = 1:Ni
+                                    I = ioff + is
+                                    J < I ? break : nothing
+                                    out[I,J,K] = buf[is + Ni*(js-1) + Ni*Nj*(ks-1)]
+                                    out[J,I,K] = out[I,J,K]
                                 end
                             end
                         end
