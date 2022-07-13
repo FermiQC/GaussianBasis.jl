@@ -137,29 +137,6 @@ function BasisSet(name::String, atoms::Vector{<:Atom}, basis::Vector{<:BasisFunc
     end
 end
 
-function BasisSet(BS1::BasisSet, BS2::BasisSet)
-    name = BS1.name*"+"*BS2.name
-    atoms = vcat(BS1.atoms, BS2.atoms)
-    basis = vcat(BS1.basis, BS2.basis)
-
-    return BasisSet(name, atoms, basis)
-end
-
-"""
-    GaussianBasis.normalize_basisfunction!(B::SphericalShell)
-
-Modify the SphericalShell object by normalizing basis function.
-"""
-function normalize_basisfunction!(B::SphericalShell)
-    for i = eachindex(B.coef)
-        n = B.l
-        a = B.exp[i]
-        # normalization factor of function rⁿ exp(-ar²)
-        s = 2^(2n+3) * factorial(n+1) * (2a)^(n+1.5) / (factorial(2n+2) * √π)
-        B.coef[i] *= √s 
-    end
-end
-
 function normalize_spherical!(coef, exp, n)
     for i = eachindex(coef)
         a = exp[i]
@@ -180,37 +157,6 @@ function normalize_cartesian!(coef, exp, l)
                                            for (ci,ei) in zip(coef, exp)
                                            for (cj,ej) in zip(coef, exp)])
     coef .*= 1 / sqrt(normsq)
-end
-
-"""
-    GaussianBasis.normalize_basisfunction!(B::CartesianShell)
-
-Modify the CartesianShell object by normalizing basis function.
-"""
-function normalize_basisfunction!(B::CartesianShell)
-    L = B.l
-    df = (π^1.5) * (L == 0 ? 1 : doublefactorial(2 * L - 1))
-
-    # Normalize primitives
-    B.coef .*= [ sqrt.((2 * ei) ^ (L + 1.5) / df) for ei in B.exp ]
-
-    # Normalize contractions
-    normsq = (df / 2^L) * sum([ ci * cj / (ei + ej) ^ (L + 1.5) 
-                                           for (ci,ei) in zip(B.coef, B.exp)
-                                           for (cj,ej) in zip(B.coef, B.exp)])
-    B.coef .*= 1 / sqrt(normsq)
-end
-
-function get_shell(BS::BasisSet, N::Int)
-    idx = 1
-    for A in 1:BS.natoms
-        for b in BS.basis[A]
-            if idx == N
-                return BS.atoms[A], b
-            end
-            idx += 1
-        end
-    end
 end
 
 function getindex(B::BasisSet, N::Int)
