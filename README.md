@@ -223,3 +223,12 @@ julia> kinetic(b1, 1,2)
 1×1 Matrix{Float64}:
  0.2252049038643092
  ```
+Mutating versions of the functions are also available 
+```julia
+julia> S = zeros(2,2);
+julia> overlap!(S, b1)
+julia> S
+2×2 Matrix{Float64}:
+ 1.0       0.646804
+ 0.646804  1.0
+ ```
