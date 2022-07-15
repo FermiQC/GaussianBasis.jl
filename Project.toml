@@ -1,7 +1,7 @@
 name = "GaussianBasis"
 uuid = "9bb1a3dc-0d1c-467e-84f5-0c4ef701360a"
 authors = ["gustavojra <gustavo.aroeira@gmail.com>"]
-version = "0.3.0"
+version = "0.4.0"
 
 [deps]
 Combinatorics = "861a8166-3701-5b0c-9a16-15d98fcdc6aa"
@@ -21,7 +21,7 @@ Formatting = "^0.4"
 HDF5 = "^0.15.6"
 SpecialFunctions = "2"
 StaticArrays = "1.4"
-Molecules = "0.1.1, 0.2, 0.3"
+Molecules = "0.3"
 julia = "^1.6"
 libcint_jll = "5"
 ForwardDiff = "^0.10"
