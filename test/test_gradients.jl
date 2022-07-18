@@ -10,7 +10,7 @@ function SinD(S, D, verbose = false)
     Dys = D[:,:,:,:,2]
     Dzs = D[:,:,:,:,3]
     for i in eachindex(Si)
-        idx = Si[i] .+ 1
+        idx = Si[i]
         x = Sx[i]
         y = Sy[i]
         z = Sz[i]

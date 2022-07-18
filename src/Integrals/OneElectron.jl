@@ -11,16 +11,16 @@ function nuclear!(out, BS::BasisSet{LCint}, i, j)
     cint1e_nuc_sph!(out, [i,j], BS.lib)
 end
 
-# Backend: ACSint
-function overlap!(out, BS::BasisSet{ACSint}, i, j)
+# Backend: ACSint -- fall back 
+function overlap!(out, BS::BasisSet, i, j)
     generate_S_pair!(out, BS, i ,j)
 end
 
-function kinetic!(out, BS::BasisSet{ACSint}, i, j)
+function kinetic!(out, BS::BasisSet, i, j)
     generate_T_pair!(out, BS, i ,j)
 end
 
-function nuclear!(out, BS::BasisSet{ACSint}, i, j)
+function nuclear!(out, BS::BasisSet, i, j)
     generate_V_pair!(out, BS, i ,j)
 end
 
@@ -102,16 +102,16 @@ end
 ########################################################### 
 ########################################################### 
 
-# Backend: ACSint
-function overlap!(out, BS1::BasisSet{ACSint}, BS2::BasisSet{ACSint}, i, j)
+# Backend: ACSint -- fall back
+function overlap!(out, BS1::BasisSet, BS2::BasisSet, i, j)
     generate_S_pair!(out, BS1.basis[i], BS2.basis[j])
 end
 
-function kinetic!(out, BS1::BasisSet{ACSint}, BS2::BasisSet{ACSint}, i, j)
+function kinetic!(out, BS1::BasisSet, BS2::BasisSet, i, j)
     generate_T_pair!(out, BS1.basis[i], BS2.basis[j])
 end
 
-function nuclear!(out, BS1::BasisSet{ACSint}, BS2::BasisSet{ACSint}, i, j)
+function nuclear!(out, BS1::BasisSet, BS2::BasisSet, i, j)
     generate_V_pair!(out, BS1.basis[i], BS2.basis[j], BS1.atoms)
 end
 
@@ -146,7 +146,7 @@ function get_1e_matrix(callback, BS1::BasisSet, BS2::BasisSet)
     get_1e_matrix!(callback, out, BS1, BS2)
 end
 
-function get_1e_matrix!(callback, out, BS1::BasisSet{ACSint}, BS2::BasisSet{ACSint})
+function get_1e_matrix!(callback, out, BS1::BasisSet, BS2::BasisSet)
 
     # Pre compute number of basis per shell
     Nvals1 = num_basis.(BS1.basis)

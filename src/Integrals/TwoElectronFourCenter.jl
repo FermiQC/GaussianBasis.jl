@@ -111,13 +111,14 @@ function ERI_2e4c(BS::BasisSet, i, j, k, l)
     out = zeros(num_basis(BS.basis[i]), num_basis(BS.basis[j]),
                 num_basis(BS.basis[k]), num_basis(BS.basis[l]))
     ERI_2e4c!(out, BS, i, j, k, l)
+    return out
 end
 
 function ERI_2e4c!(out, BS::BasisSet{LCint}, i, j, k, l)
     cint2e_sph!(out, [i,j,k,l], BS.lib)
 end
 
-function ERI_2e4c!(out, BS::BasisSet{ACSint}, i, j, k, l)
+function ERI_2e4c!(out, BS::BasisSet, i, j, k, l)
     generate_ERI_quartet!(out, BS, i, j, k, l)
 end
 
