@@ -39,7 +39,7 @@ Current features include:
 - Two-electrons four-center integral (2e4c)
 - Gradients (currrently under construction - *watch out!*)
 
-Integral computations use by default the integral library [libcint](https://github.com/sunqm/libcint) *via* [libcint_jll.jl](https://github.com/JuliaBinaryWrappers/libcint_jll.jl). A simple Julia-written integral module `Acsint.jl` is also available, but it is significant slower than the `libcint`.  
+Integral computations use by default the integral library [libcint](https://github.com/sunqm/libcint) *via* [libcint_jll.jl](https://github.com/JuliaBinaryWrappers/libcint_jll.jl). A simple Julia-written integral module `Acsint.jl` is also available, but it is significantly slower than the `libcint`.  
 
 # Basic Usage
 
@@ -49,6 +49,7 @@ julia> bset = BasisSet("sto-3g", """
               H        0.00      0.00     0.00                 
               H        0.76      0.00     0.00""")
 sto-3g Basis Set
+Type: Spherical   Backend: Libcint
 Number of shells: 2
 Number of basis:  2
 
@@ -76,13 +77,15 @@ julia> overlap(bset)
 # Advanced Usage
 
 ## Basis Functions
-`BasisFunction` object is the elementary data type within this package. In general, a basis function is 
+`BasisFunction` object is the central data type within this package. Here, `BasisFunction` is an abstract type with two concrete structures: `SphericalShell` and `CartesianShell`. By default `SphericalShell` is created. In general a spherical basis function is
 
 ![BF](assets/bf.png)
 
 where the sum goes over primitive functions. A `BasisFunction` object contains the data to reproduce the mathematical object, i.e. the angular momentum number (***l***), expansion coefficients (***c<sub>n</sub>***), and exponential factors (***&xi;<sub>n</sub>***). We can create a basis function by passing these arguments orderly:
 ```julia
-julia> bf = BasisFunction(1, [1/√2, 1/√2], [5.0, 1.2])
+julia> using StaticArrays
+julia> atom = GaussianBasis.Atom(8, 16.0, [1.0, 0.0, 0.0])
+julia> bf = BasisFunction(1, SVector(1/√2, 1/√2), SVector(5.0, 1.2), atom)
 P shell with 3 basis built from 2 primitive gaussians
 
 χ₁₋₁ =    0.7071067812⋅Y₁₋₁⋅r¹⋅exp(-5.0⋅r²)
@@ -100,26 +103,26 @@ julia> bf.l
 1
 
 julia> bf.coef
-2-element Vector{Float64}:
+2-element SVector{2, Float64} with indices SOneTo(2):
  0.7071067811865475
  0.7071067811865475
 
 julia> bf.exp
-2-element Vector{Float64}:
+2-element SVector{2, Float64} with indices SOneTo(2):
  5.0
  1.2
  ```
- Note that, the `BasisFunction` object has no information about the atom it is attached to! This information is introduced into the `BasisSet` struct.
+ Note that `exp` and `coef` are expected to be `SVector` from `StaticArrays`. 
 
  ## Basis Set
 
  The `BasisSet` object is the main ingredient for integrals. It can be created in a number of ways:
 
- - The highest level approach takes two strings as arguments, one for the basis set name and another for the XYZ file. See *Basis Usage*.
+ - The highest level approach takes two strings as arguments, one for the basis set name and another for the XYZ file. See *Basic Usage*.
 
- - Youcan pass your vector of `Atom` structures instead of an XYZ string as the second argument. `GaussianBasis` uses the `Atom` structure from [Molecules.jl](https://github.com/FermiQC/GaussianBasis.jl).
+ - You can pass your vector of `Atom` structures instead of an XYZ string as the second argument. `GaussianBasis` uses the `Atom` structure from [Molecules.jl](https://github.com/FermiQC/GaussianBasis.jl).
   ```julia
-atoms = Molecules.parse_string("""
+atoms = GaussianBasis.parse_string("""
               H        0.00      0.00     0.00                 
               H        0.76      0.00     0.00""")
 BasisSet("sto-3g", atoms)
@@ -127,9 +130,9 @@ BasisSet("sto-3g", atoms)
 
  - Finally, instead of searching into `GaussianBasis/lib` for a basis set file matching the desired name, you can construct your own from scratch. We further discuss this approach below. 
 
- Basis sets are a map between atoms and their basis functions. Thus, the most important field here is a Vector (one dimensional array) of `BasisFunction` vectors (i.e. `Vector{Vector{BasisFunction}}`). First we create a Vector of `Atom` objects
+ Basis sets are mainly composed of two arrays: a vector of atoms and a vector of basis functions objects. We can construct both manually for maximum flexibility: 
  ```julia
-julia> h2 = Molecules.parse_string(
+julia> h2 = GaussianBasis.parse_string(
    "H 0.0 0.0 0.0
     H 0.0 0.0 0.7"
 )
@@ -137,22 +140,17 @@ julia> h2 = Molecules.parse_string(
  Atom{Int16, Float64}(1, 1.008, [0.0, 0.0, 0.0])
  Atom{Int16, Float64}(1, 1.008, [0.0, 0.0, 0.7])
  ```
-Next, we create basis functions.
+Next, we create a vector of basis functions.
 ```julia
-julia> s = BasisFunction(0, [0.5215367271], [0.122])
-julia> p = BasisFunction(1, [1.9584045349], [0.727]);
+julia> shells = [BasisFunction(0, SVector(0.5215367271), SVector(0.122), h2[1]),
+BasisFunction(0, SVector(0.5215367271), SVector(0.122), h2[2]),
+BasisFunction(1, SVector(1.9584045349), SVector(0.727), h2[2])];
 ```
-Next, we create a map between atoms and basis function. In this case, for the sake of showing the flexibility here, we will do something unorthodox and attach one $s$ function to the first hydrogen and an $s$ and $p$ functions to the second:
-```julia
-julia> bmap = [
-    [s],  # One s function on the first hydrogen
-    [s,p] # One s and one p function on the second hydrogen
-];
-```
-Note that the "mapping" is simply achieved by the ordering, the $n$-th entry in `bmap` is attributed to the $n$-th Atom in `h2`. Finally, we can create the basis set:
+Finally, we create the basis set object. Note that, you got to make sure your procedure is consistent. The atoms used to construct the basis set object must be in the `atom` vector, otherwise unexpected results may arise. 
 ```julia
 julia> bset = BasisSet("UnequalHydrogens", h2, shells)
 UnequalHydrogens Basis Set
+Type: Spherical{Molecules.Atom, 1, Float64}   Backend: Libcint
 Number of shells: 3
 Number of basis:  5
 
@@ -163,12 +161,11 @@ The most import fields here are:
 ```julia
 julia> bset.name == "UnequalHydrogens"
 true
-julia> bset.basis == bmap
+julia> bset.basis == shells 
 true
 julia> bset.atoms == h2
 true
 ```
-Other fields (such as `bset.lc_env`) are mostly chewed up information for `libcint`. You can learn more about them [here](https://github.com/sunqm/libcint/blob/master/doc/program_ref.pdf).
 
 ### Integrals over different basis sets
 
@@ -213,105 +210,25 @@ julia> kinetic(b1, b2)
 ```
 This can be useful when working with projections from one basis set onto another. 
 
-### Calling raw libcint functions
+### Computing integrals element-wise
 
-If one desires, it is possible to directly call the simplest/lowest-level wrap over libcint functions. This can be useful if instead of the full array you only want a few specific shell pairs. The list of function currently exposed can be found in the `GaussianBasis.Libcint` module and the corresponding `GaussianBasis/src/Libcint.jl` file.
+For all integrals, you can get the full array by using the general syntax `integral(basisset)` (e.g. `overlap(bset)` or `ERI_2e4c(bset)`). Alternatively, you can specify a shell combination for which the integral must be computed
 ```julia
-julia> names(GaussianBasis.Libcint)
-12-element Vector{Symbol}:
- :Libcint
- :cint1e_ipkin_sph!
- :cint1e_ipnuc_sph!
- :cint1e_ipovlp_sph!
- :cint1e_kin_sph!
- :cint1e_nuc_sph!
- :cint1e_ovlp_sph!
- :cint1e_r_sph!
- :cint2c2e_sph!
- :cint2e_ip1_sph!
- :cint2e_sph!
- :cint3c2e_sph!
+julia> ERI_2e4c(b1, 1,2,2,1)
+1×1×1×1 Array{Float64, 4}:
+[:, :, 1, 1] =
+ 0.2845189435761272
+
+julia> kinetic(b1, 1,2)
+1×1 Matrix{Float64}:
+ 0.2252049038643092
  ```
-If you need to expose a new function you should do in that file, don't forget to export the function afterwards!
-
- > A note on conventions: original `libcint` functions do not have **!** at the end of their names, we add this to comply with Julia practices. For example, `cint1e_ovlp_sph` is exposed as `cint1e_ovlp_sph!`. The **!** indicates that the function is a [mutating function](https://docs.julialang.org/en/v1/manual/style-guide/#Use-naming-conventions-consistent-with-Julia-base/).
-
- All functions are called with the same type signature. We shall use the overlap functions as the example here:
-
-`cint1e_ovlp_sph!(buf, shls, atm, natm, bas, nbas, env)`
-
-A more detailed description of each argument in found in the [`libcint` documentation](https://github.com/sunqm/libcint/blob/master/doc/program_ref.pdf). Here, we offer an overview
-
-- `buf` type: `Array{Cdouble}`
-
-Array where integral results are written into, it is understood as a linear array (though, it does not need to be passed as such); hence, you may need reshape to get what you want. 
-
-- `shls` type `Array{Cint}`
-
-Indicates the shell pair for which the integral must be computed. See example below.
-
-- `atom` type: `Array{Cint}`
-
-Holds information about atoms, mapping onto values in `env`.
-
-- `natom` type `Cint`
-
-Number of atoms
-
-- `bas` type: `Array{Cint}`
-
-Holds information about the basis set, mapping onto values in `env`.
-
-- `nbas` type: `Cint`
-
-Number of basis functions.
-
-> Note that, **basis functions** here refers to the *actual* number of functions, e.g. for a system with *s* and *p* functions, there are 4 basis functions (because the *p* shell contains 3 basis functions). This can be confusing since the `BasisFunction` object in `GaussianBasis` actually holds information of the whole shell. Such is life.
-
-- `env` type: `Array{Cdouble}`
-
-Holds all the `Cdouble` (`Float64`) data. The `atm` and `bas` arrays tell you how to read chunks of this array.
-
-#### Example
-
-The `BasisSet` object contains the information formatted as required by `libcint`. Given a `BasisSet` object named `bset`, `atm`, `bas`, and `env` can be fetched through the fields `bset.lc_atoms`, `bset.lc_bas`, and `bset.lc_env`, respectively. Thus, it is recommended that you just use this object to call these functions. Let us work out an example for water using sto-3g.
+Mutating versions of the functions are also available 
 ```julia
-bset = BasisSet("sto-3g", """
-     O     1.2091536548    1.7664118189   -0.0171613972
-     H     2.1984800075    1.7977100627    0.0121161719
-     H     0.9197881882    2.4580185570    0.6297938832
-""")
-sto-3g Basis Set
-Number of shells: 5
-Number of basis:  7
-
-O: 1s 2s 1p 
-H: 1s 
-H: 1s
-```
-Notice how the **shells** are ordered: O 1s, O 2s, O 1p, H 1s, H 1s
-
-Suppose we want the overlap over O 1p and H 1s. Since p contains 3 functions, we need a 3x1 output array. The argument `shls` is used to indicate our choice of shells, in this case `shls = Cint.([2,3])`
-
-> Counting starts from zero since this is a C call.
-
-```julia
-julia> buf = zeros(3,1)
-julia> GaussianBasis.Libcint.cint1e_ovlp_sph!(buf, Cint.([2,3]), 
-bset.lc_atoms, bset.natoms, bset.lc_bas, 
-bset.nbas, bset.lc_env)
-julia> buf
-3×1 Matrix{Float64}:
- 0.3813773519418131
- 0.012065221257168891
- 0.011286267412344286
-```
-Compare that with the **S** matrix:
-```julia
-julia> S = overlap(bset)
-julia> S[3:5, 5]
-julia> S[3:5, 6] ≈ buf
-true
-julia> S[6, 3:5] ≈ buf
-true
-```
+julia> S = zeros(2,2);
+julia> overlap!(S, b1)
+julia> S
+2×2 Matrix{Float64}:
+ 1.0       0.646804
+ 0.646804  1.0
+ ```
