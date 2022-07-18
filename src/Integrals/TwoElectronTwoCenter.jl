@@ -1,43 +1,16 @@
-function ERI_2e2c(BS::BasisSet, T::DataType = Float64)
+function ERI_2e2c!(out, BS::BasisSet, i, j)
+    generate_ERI_quartet!(out, BS.basis[i], _ghostBF, BS.basis[j], _ghostBF)
+end
 
-    # Pre allocate output
-    out = zeros(T, BS.nbas, BS.nbas)
+function ERI_2e2c!(out, BS::BasisSet{LCint}, i, j)
+    cint2c2e_sph!(out, [i,j], BS.lib)
+end
 
-    # Pre compute a list of angular momentum numbers (l) for each shell
-    lvals = [Libcint.CINTcgtos_spheric(i-1, BS.lc_bas) for i = 1:BS.nshells]
-    Lmax = maximum(lvals)
+function ERI_2e2c(BS::BasisSet)
+    out = zeros(BS.nbas, BS.nbas)
+    ERI_2e2c!(out, BS)
+end
 
-    # Offset list for each shell, used to map shell index to AO index
-    ao_offset = [sum(lvals[1:(i-1)]) for i = 1:BS.nshells]
-
-    buf_arrays = [zeros(Cdouble, Lmax^4) for _ = 1:Threads.nthreads()]
-
-    @sync for i in 1:BS.nshells
-        Threads.@spawn begin
-            @inbounds begin
-                Li = lvals[i]
-                buf = buf_arrays[Threads.threadid()]
-                ioff = ao_offset[i]
-                for j in i:BS.nshells
-                    Lj = lvals[j]
-                    joff = ao_offset[j]
-
-                    # Call libcint
-                    cint2c2e_sph!(buf, [i,j], BS)
-
-                    # Loop through shell block and save unique elements
-                    for js = 1:Lj
-                        J = joff + js
-                        for is = 1:Li
-                            I = ioff + is
-                            J < I ? break : nothing
-                            out[I,J] = buf[is + Li*(js-1)]
-                            out[J,I] = out[I,J]
-                        end
-                    end
-                end
-            end #inbounds
-        end #spawn
-    end #sync
-    return out
+function ERI_2e2c!(out, BS::BasisSet)
+    get_1e_matrix!(ERI_2e2c!, out, BS)
 end

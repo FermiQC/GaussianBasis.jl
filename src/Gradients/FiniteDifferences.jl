@@ -18,23 +18,23 @@ function create_displacement(BS::BasisSet, A::Int, i::Int, h)
 end
 
 function ∇FD_overlap(BS::BasisSet, A, i, h = 1e-5)
-    return ∇FD_1e(BS, "overlap", A, i, h)
+    return ∇FD_1e(BS, overlap, A, i, h)
 end
 
 function ∇FD_kinetic(BS::BasisSet, A, i, h = 1e-5)
-    return ∇FD_1e(BS, "kinetic", A, i, h)
+    return ∇FD_1e(BS, kinetic, A, i, h)
 end
 
 function ∇FD_nuclear(BS::BasisSet, A, i, h = 1e-5)
-    return ∇FD_1e(BS, "nuclear", A, i, h)
+    return ∇FD_1e(BS, nuclear, A, i, h)
 end
 
-function ∇FD_1e(BS::BasisSet, compute::String, A, i, h)
+function ∇FD_1e(BS::BasisSet, callback, A, i, h)
 
     bs_plus, bs_minus = create_displacement(BS, A, i, h)
 
-    Xplus = ao1e(bs_plus, compute)
-    Xminus = ao1e(bs_minus, compute)
+    Xplus = callback(bs_plus)
+    Xminus = callback(bs_minus)
 
     return (Xplus - Xminus) ./ (2*h/Molecules.bohr_to_angstrom)
 end

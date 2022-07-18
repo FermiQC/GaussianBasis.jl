@@ -1,10 +1,10 @@
-function ∇1e(BS::BasisSet, compute::String, iA, T::DataType = Float64)
+function ∇1e(BS::BasisSet, compute::String, iA)
     # Pre allocate output
-    out = zeros(T, BS.nbas, BS.nbas, 3)
-    return ∇1e!(out, BS, compute, iA, T)
+    out = zeros(BS.nbas, BS.nbas, 3)
+    return ∇1e!(out, BS, compute, iA)
 end
 
-function ∇1e!(out, BS::BasisSet, compute::String, iA, T::DataType = Float64)
+function ∇1e!(out, BS::BasisSet, compute::String, iA)
 
     if size(out) != (BS.nbas, BS.nbas, 3)
         throw(DimensionMismatch("Size of the output array needs to be (nbas, nbas, 3)"))
@@ -20,49 +20,43 @@ function ∇1e!(out, BS::BasisSet, compute::String, iA, T::DataType = Float64)
 
     A = BS.atoms[iA]
 
-    # Get shell index (s0) where basis of the desired atom start
-    s0 = 0
-    for a in eachindex(BS.atoms)
-        if BS.atoms[a] != A
-            s0 += length(BS.basis[a])
-        else
-            break
-        end
-    end
-
-    # Shell indexes for basis in the atom A (C notation: Starts from 0)
-    Ashells = [(s0 + i -1) for i = 1:length(BS.basis[iA])]
+    # Shell indexes for basis in the atom A 
+    Ashells = Int[]
     notAshells = Int[]
-    for i = 1:BS.nshells
-        if !((i-1) in Ashells)
-            push!(notAshells, i-1)
+    for i in 1:BS.nshells
+        b = BS.basis[i]
+        if b.atom == A
+            push!(Ashells, i)
+        else
+            push!(notAshells, i)
         end
     end
 
-    lvals = [Libcint.CINTcgtos_spheric(i-1, BS.lc_bas) for i = 1:BS.nshells]
-    ao_offset = [sum(lvals[1:(i-1)]) for i = 1:BS.nshells]
-    Lmax = maximum(lvals)
-    buf_arrays = [zeros(Cdouble, 3*Lmax^2) for _ = 1:Threads.nthreads()]
+    Nvals = num_basis.(BS.basis)
+    ao_offset = [sum(Nvals[1:(i-1)]) for i = 1:BS.nshells]
+    Nmax = maximum(Nvals)
+    buf_arrays = [zeros(Cdouble, 3*Nmax^2) for _ = 1:Threads.nthreads()]
     @sync for i in Ashells
         Threads.@spawn begin
         @inbounds begin
-            Li = lvals[i+1]
-            ioff = ao_offset[i+1]
+            Ni = Nvals[i]
+            ioff = ao_offset[i]
             buf = buf_arrays[Threads.threadid()]
             for j in notAshells
-                Lj = lvals[j+1]
-                joff = ao_offset[j+1]
-                Lij = Li*Lj
+                Nj = Nvals[j]
+                joff = ao_offset[j]
+                Nij = Ni*Nj
                 # Call libcint
-                libcint_1e!(buf, Cint.([i,j]), BS.lc_atoms, BS.natoms, BS.lc_bas, BS.nbas, BS.lc_env)
-                I = (ioff+1):(ioff+Li)
-                J = (joff+1):(joff+Lj)
+                libcint_1e!(buf, [i,j], BS.lib)
+                I = (ioff+1):(ioff+Ni)
+                J = (joff+1):(joff+Nj)
 
                 # Get strides for each cartesian
                 for k in 1:3
-                    r = (1+Lij*(k-1)):(k*Lij)
+                    r = (1+Nij*(k-1)):(k*Nij)
                     @views ∇k = buf[r]
-                    out[I,J,k] .-= reshape(∇k, Int(Li), Int(Lj))
+                    #∇k = buf[r]
+                    out[I,J,k] .-= reshape(∇k, Int(Ni), Int(Nj))
                 end
 
                 # Copy over the transpose
@@ -74,29 +68,18 @@ function ∇1e!(out, BS::BasisSet, compute::String, iA, T::DataType = Float64)
     return out
 end
 
-function ∇overlap(BS::BasisSet, iA, T::DataType = Float64)
-    return ∇1e(BS, "overlap", iA, T)
-end
+∇overlap(BS::BasisSet, iA) = ∇1e(BS, "overlap", iA)
+∇overlap!(out, BS::BasisSet, iA) = ∇1e!(out, BS, "overlap", iA)
+∇kinetic(BS::BasisSet, iA) = ∇1e(BS, "kinetic", iA)
+∇kinetic!(out, BS::BasisSet, iA) = ∇1e!(out, BS, "kinetic", iA)
 
-function ∇overlap!(out, BS::BasisSet, iA, T::DataType = Float64)
-    return ∇1e!(out, BS, "overlap", iA, T)
-end
-
-function ∇kinetic(BS::BasisSet, iA, T::DataType = Float64)
-    return ∇1e(BS, "kinetic", iA, T)
-end
-
-function ∇kinetic!(out, BS::BasisSet, iA, T::DataType = Float64)
-    return ∇1e!(out, BS, "kinetic", iA, T)
-end
-
-function ∇nuclear(BS::BasisSet, iA, T::DataType = Float64)
+function ∇nuclear(BS::BasisSet, iA)
     # Pre allocate output
-    out = zeros(T, BS.nbas, BS.nbas, 3)
-    return ∇nuclear!(out, BS, iA, T)
+    out = zeros(BS.nbas, BS.nbas, 3)
+    return ∇nuclear!(out, BS, iA)
 end
 
-function ∇nuclear!(out, BS::BasisSet, iA, T::DataType = Float64)
+function ∇nuclear!(out, BS::BasisSet, iA)
 
     if size(out) != (BS.nbas, BS.nbas, 3)
         throw(DimensionMismatch("Size of the output array needs to be (nbas, nbas, 3)"))
@@ -105,8 +88,8 @@ function ∇nuclear!(out, BS::BasisSet, iA, T::DataType = Float64)
     A = BS.atoms[iA]
 
     # Fudge lc_atoms
-    lc_atoms_A = deepcopy(BS.lc_atoms)
-    lc_atoms_woA = deepcopy(BS.lc_atoms)
+    lc_atoms_A = deepcopy(BS.lib.atm)
+    lc_atoms_woA = deepcopy(BS.lib.atm)
     for i = eachindex(BS.atoms)
         if i == iA
             lc_atoms_woA[1 + 6*(i-1)] = 0
@@ -115,52 +98,43 @@ function ∇nuclear!(out, BS::BasisSet, iA, T::DataType = Float64)
         lc_atoms_A[1 + 6*(i-1)] = 0
     end
 
-    # Get shell index (s0) where basis of the desired atom start
-    s0 = 0
-    for a in eachindex(BS.atoms)
-        if BS.atoms[a] != A
-            s0 += length(BS.basis[a])
-        else
-            break
-        end
-    end
-
-    # Shell indexes for basis in the atom A
-    Ashells = [(s0 + i -1) for i = 1:length(BS.basis[iA])]
+    # Shell indexes for basis in the atom A (C notation: Starts from 0)
+    Ashells = Int[]
     notAshells = Int[]
-    for i = 1:BS.nshells
-        # i-1 is used to convert to C notation (starting with 0)
-        if !((i-1) in Ashells)
-            push!(notAshells, i-1)
+    for i in 1:BS.nshells
+        b = BS.basis[i]
+        if b.atom == A
+            push!(Ashells, i)
+        else
+            push!(notAshells, i)
         end
     end
     
-    lvals = [Libcint.CINTcgtos_spheric(i-1, BS.lc_bas) for i = 1:BS.nshells]
-    ao_offset = [sum(lvals[1:(i-1)]) for i = 1:BS.nshells]
-    Lmax = maximum(lvals)
-    buf_arrays = [zeros(Cdouble, 3*Lmax^2) for _ = 1:Threads.nthreads()]
-
+    Nvals = num_basis.(BS.basis)
+    ao_offset = [sum(Nvals[1:(i-1)]) for i = 1:BS.nshells]
+    Nmax = maximum(Nvals)
+    buf_arrays = [zeros(Cdouble, 3*Nmax^2) for _ = 1:Threads.nthreads()]
     # i ∉ A & j ∉ A
     @sync for i in notAshells
         Threads.@spawn begin
         @inbounds begin
-            Li = lvals[i+1]
-            ioff = ao_offset[i+1]
-            I = (ioff+1):(ioff+Li)
+            Ni = Nvals[i]
+            ioff = ao_offset[i]
+            I = (ioff+1):(ioff+Ni)
             buf = buf_arrays[Threads.threadid()]
             for j in notAshells
-                Lj = lvals[j+1]
-                Lij = Li*Lj
-                joff = ao_offset[j+1]
-                J = (joff+1):(joff+Lj)
+                Nj = Nvals[j]
+                Nij = Ni*Nj
+                joff = ao_offset[j]
+                J = (joff+1):(joff+Nj)
 
                 # + ⟨i'|Va|j⟩ + ⟨i|Va|j'⟩   (Note that Va is the potential of the nuclei A alone!!)
-                cint1e_ipnuc_sph!(buf, Cint.([i,j]), lc_atoms_A, BS.natoms, BS.lc_bas, BS.nbas, BS.lc_env)
+                cint1e_ipnuc_sph!(buf, Cint.([i-1,j-1]), lc_atoms_A, BS.lib.natm, BS.lib.bas, BS.lib.nbas, BS.lib.env)
 
                 # Get strides for each cartesian
                 for k in 1:3
-                    r = (1+Lij*(k-1)):(k*Lij)
-                    ∇k = reshape(buf[r], Int(Li), Int(Lj))
+                    r = (1+Nij*(k-1)):(k*Nij)
+                    ∇k = reshape(buf[r], Int(Ni), Int(Nj))
                     out[I,J,k] .+= ∇k  # ⟨i'|Va|j ⟩
                 end
             end
@@ -172,22 +146,22 @@ function ∇nuclear!(out, BS::BasisSet, iA, T::DataType = Float64)
     @sync for i in Ashells
         Threads.@spawn begin
         @inbounds begin
-            Li = lvals[i+1]
-            ioff = ao_offset[i+1]
-            I = (ioff+1):(ioff+Li)
+            Ni = Nvals[i]
+            ioff = ao_offset[i]
+            I = (ioff+1):(ioff+Ni)
             buf = buf_arrays[Threads.threadid()]
             for j in Ashells
-                Lj = lvals[j+1]
-                Lij = Li*Lj
-                joff = ao_offset[j+1]
-                J = (joff+1):(joff+Lj)
+                Nj = Nvals[j]
+                Nij = Ni*Nj
+                joff = ao_offset[j]
+                J = (joff+1):(joff+Nj)
 
                 # - ⟨i'|∑Vc|j⟩ - ⟨i|∑Vc|j'⟩ c != a
-                cint1e_ipnuc_sph!(buf, Cint.([i,j]), lc_atoms_woA, BS.natoms, BS.lc_bas, BS.nbas, BS.lc_env)
+                cint1e_ipnuc_sph!(buf, Cint.([i-1,j-1]), lc_atoms_woA, BS.lib.natm, BS.lib.bas, BS.lib.nbas, BS.lib.env)
 
                 for k in 1:3
-                    r = (1+Lij*(k-1)):(k*Lij)
-                    ∇k = reshape(buf[r], Int(Li), Int(Lj))
+                    r = (1+Nij*(k-1)):(k*Nij)
+                    ∇k = reshape(buf[r], Int(Ni), Int(Nj))
                     out[I,J,k] .-= ∇k  # ⟨i'|∑Vc|j ⟩ c != a
                 end
             end
@@ -199,29 +173,29 @@ function ∇nuclear!(out, BS::BasisSet, iA, T::DataType = Float64)
     @sync for i in Ashells
         Threads.@spawn begin
         @inbounds begin
-            Li = lvals[i+1]
-            ioff = ao_offset[i+1]
-            I = (ioff+1):(ioff+Li)
+            Ni = Nvals[i]
+            ioff = ao_offset[i]
+            I = (ioff+1):(ioff+Ni)
             buf = buf_arrays[Threads.threadid()]
             for j in notAshells
-                Lj = lvals[j+1]
-                Lij = Li*Lj
-                joff = ao_offset[j+1]
-                J = (joff+1):(joff+Lj)
+                Nj = Nvals[j]
+                Nij = Ni*Nj
+                joff = ao_offset[j]
+                J = (joff+1):(joff+Nj)
 
                 # - ⟨i'|∑Vc|j⟩ + ⟨i|Va|j'⟩ c != a
-                cint1e_ipnuc_sph!(buf, Cint.([i,j]), lc_atoms_woA, BS.natoms, BS.lc_bas, BS.nbas, BS.lc_env)
+                cint1e_ipnuc_sph!(buf, Cint.([i-1,j-1]), lc_atoms_woA, BS.lib.natm, BS.lib.bas, BS.lib.nbas, BS.lib.env)
                 for k in 1:3
-                    r = (1+Lij*(k-1)):(k*Lij)
+                    r = (1+Nij*(k-1)):(k*Nij)
                     ∇k = buf[r]
-                    out[I,J,k] .-= reshape(∇k, Int(Li), Int(Lj))
+                    out[I,J,k] .-= reshape(∇k, Int(Ni), Int(Nj))
                 end
 
-                cint1e_ipnuc_sph!(buf, Cint.([j,i]), lc_atoms_A, BS.natoms, BS.lc_bas, BS.nbas, BS.lc_env)
+                cint1e_ipnuc_sph!(buf, Cint.([j-1,i-1]), lc_atoms_A, BS.lib.natm, BS.lib.bas, BS.lib.nbas, BS.lib.env)
                 for k in 1:3
-                    r = (1+Lij*(k-1)):(k*Lij)
+                    r = (1+Nij*(k-1)):(k*Nij)
                     ∇k = buf[r]
-                    out[I,J,k] .+= transpose(reshape(∇k, Int(Lj), Int(Li)))
+                    out[I,J,k] .+= transpose(reshape(∇k, Int(Nj), Int(Ni)))
                 end
             end
         end #inbounds
