@@ -8,22 +8,9 @@ using Combinatorics: doublefactorial
 using LinearAlgebra: norm, eigen
 using StaticArrays
 
-import ForwardDiff: Dual, partials, value
-
 export generate_ERI_quartet!, generate_S_pair!, generate_T_pair!, generate_V_pair!
 
 const ang2bohr = 1.8897261246257702
-
-# This is needed for AD
-# Once this is implemented into ForwardDif.jl we can remove it from here
-# Credits to David Widmann in
-# https://github.com/JuliaDiff/ForwardDiff.jl/pull/587/files
-function SpecialFunctions.gamma_inc(a::Real, d::Dual{T,<:Real}, ind::Integer) where {T}
-    x = value(d)
-    p, q = SpecialFunctions.gamma_inc(a, x, ind)
-    ∂p = exp(-x) * x^(a - 1) / SpecialFunctions.gamma(a) * partials(d)
-    return (Dual{T}(p, ∂p), Dual{T}(q, -∂p))
-end
 
 function cumulative_cart_dim(L)
     # The number of Cartesian components in all shell with angular momentum L and lower """
@@ -416,7 +403,7 @@ end
     δ = ⍵^2 / (⍵^2 + α)
     TT = T * δ
 
-    Fnmax = if T == 0.0 
+    Fnmax = if T < 1e-20    # T ≈ 0
         1.0 / (2 * nmax + 1)
     else 
         gamma(nmax + 0.5) * gamma_inc(nmax + 0.5, TT)[1] / (2 * TT ^ (nmax + 0.5))
@@ -443,7 +430,7 @@ end
         α + β(erf ⍵ R)
         --------------
               R       """
-    PC = P - C
+    PC = P .- C
     RPC = norm(PC)
     T = p * RPC ^ 2
     R .= 0
