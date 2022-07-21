@@ -51,7 +51,7 @@ kinetic!(out, BS::BasisSet) = get_1e_matrix!(kinetic!, out, BS)
 nuclear!(out, BS::BasisSet) = get_1e_matrix!(nuclear!, out, BS)
 
 function get_1e_matrix(callback, BS::BasisSet)
-    out = zeros(BS.nbas, BS.nbas)
+    out = zeros(eltype(BS.atoms[1].xyz), BS.nbas, BS.nbas)
     get_1e_matrix!(callback, out, BS)
 end
 
@@ -64,7 +64,7 @@ function get_1e_matrix!(callback, out, BS::BasisSet)
     # Offset list for each shell, used to map shell index to AO index
     ao_offset = [sum(Nvals[1:(i-1)]) for i = 1:BS.nshells]
 
-    buf_arrays = [zeros(Cdouble, Nmax^2) for _ = 1:Threads.nthreads()]
+    buf_arrays = [zeros(eltype(BS.atoms[1].xyz), Nmax^2) for _ = 1:Threads.nthreads()]
 
     @sync for i in 1:BS.nshells
         Threads.@spawn begin

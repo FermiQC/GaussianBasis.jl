@@ -1,11 +1,12 @@
 function sparseERI_2e4c(BS::BasisSet, cutoff = 1e-12)
+    T = eltype(BS.atoms[1].xyz)
 
     # Number of unique integral elements
     N = (BS.nbas^2 - BS.nbas) ÷ 2 + BS.nbas
     N = (N^2 - N) ÷ 2 + N
 
     # Pre allocate output
-    out = zeros(N)
+    out = zeros(T, N)
     indexes = Array{NTuple{4,Int16}}(undef, N)
 
     # Pre compute a list of angular momentum numbers (l) for each shell
@@ -22,7 +23,8 @@ function sparseERI_2e4c(BS::BasisSet, cutoff = 1e-12)
     ij_vals = Array{NTuple{2,Int32}}(undef, num_ij)
 
     # Pre allocate array to save σij, that is the screening parameter for Schwarz 
-    σvals = zeros(Float64, num_ij)
+    # σvals = zeros(Float64, num_ij)
+    σvals = zeros(T, num_ij)
 
     ### Loop thorugh i and j such that i ≤ j. Save each pair into ij_vals and compute √σij for integral screening
     lim = Int32(BS.nshells - 1)
@@ -31,7 +33,8 @@ function sparseERI_2e4c(BS::BasisSet, cutoff = 1e-12)
         Li2 = Nvals[i+1]^2
             for j = UnitRange{Int32}(i, lim)
                 Lj2 = Nvals[j+1]^2
-                buf = zeros(Cdouble, Li2*Lj2)
+                # buf = zeros(Cdouble, Li2*Lj2)
+                buf = zeros(T, Li2*Lj2)
                 idx = index2(i,j) + 1
                 ij_vals[idx] = (i+1,j+1)
                 ERI_2e4c!(buf, BS, i+1, i+1, j+1 ,j+1)
@@ -40,7 +43,7 @@ function sparseERI_2e4c(BS::BasisSet, cutoff = 1e-12)
         end
     end
 
-    buf_arrays = [zeros(Cdouble, Nmax^4) for _ = 1:Threads.nthreads()]
+    buf_arrays = [zeros(T, Nmax^4) for _ = 1:Threads.nthreads()]
     
     # i,j,k,l => Shell indexes starting at zero
     # I, J, K, L => AO indexes starting at one
@@ -108,7 +111,7 @@ function sparseERI_2e4c(BS::BasisSet, cutoff = 1e-12)
 end
 
 function ERI_2e4c(BS::BasisSet, i, j, k, l)
-    out = zeros(num_basis(BS.basis[i]), num_basis(BS.basis[j]),
+    out = zeros(eltype(BS.atoms[1].xyz), num_basis(BS.basis[i]), num_basis(BS.basis[j]),
                 num_basis(BS.basis[k]), num_basis(BS.basis[l]))
     ERI_2e4c!(out, BS, i, j, k, l)
     return out

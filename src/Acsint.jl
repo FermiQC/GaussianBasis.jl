@@ -15,17 +15,6 @@ export generate_ERI_quartet!, generate_S_pair!, generate_T_pair!, generate_V_pai
 
 const ang2bohr = 1.8897261246257702
 
-# This is needed for AD
-# Once this is implemented into ForwardDiff.jl we can remove it from here
-# Credits to David Widmann in
-# https://github.com/JuliaDiff/ForwardDiff.jl/pull/587/files
-function SpecialFunctions.gamma_inc(a::Real, d::Dual{T,<:Real}, ind::Integer) where {T}
-    x = value(d)
-    p, q = SpecialFunctions.gamma_inc(a, x, ind)
-    ∂p = exp(-x) * x^(a - 1) / SpecialFunctions.gamma(a) * partials(d)
-    return (Dual{T}(p, ∂p), Dual{T}(q, -∂p))
-end
-
 function cumulative_cart_dim(L)
     # The number of Cartesian components in all shell with angular momentum L and lower """
     ((L + 1) * (L + 2) * (L + 3)) ÷ 6
