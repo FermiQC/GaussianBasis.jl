@@ -430,8 +430,7 @@ end
         α + β(erf ⍵ R)
         --------------
               R       """
-    PC = Vector{eltype(P)}(undef,3)     # Preallocation needed for Duals 
-    PC .= P - C
+    PC = P .- C
     RPC = norm(PC)
     T = p * RPC ^ 2
     R .= 0
