@@ -1,15 +1,6 @@
 using GaussianBasis
 using Combinatorics: doublefactorial
 import Base: getindex, show
-using ForwardDiff: Dual, value
-
-function get_dual_val(x::Dual{T,V,N} where {T,V,N})
-    val = copy(x)
-    while typeof(val) <: Dual{T,V,N} where {T,V,N}
-        val = value(val)
-    end
-    return val
-end
 
 include("Libs.jl")
 

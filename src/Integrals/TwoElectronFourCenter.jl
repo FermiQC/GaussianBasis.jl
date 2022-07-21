@@ -23,7 +23,6 @@ function sparseERI_2e4c(BS::BasisSet, cutoff = 1e-12)
     ij_vals = Array{NTuple{2,Int32}}(undef, num_ij)
 
     # Pre allocate array to save σij, that is the screening parameter for Schwarz 
-    # σvals = zeros(Float64, num_ij)
     σvals = zeros(T, num_ij)
 
     ### Loop thorugh i and j such that i ≤ j. Save each pair into ij_vals and compute √σij for integral screening
@@ -33,7 +32,6 @@ function sparseERI_2e4c(BS::BasisSet, cutoff = 1e-12)
         Li2 = Nvals[i+1]^2
             for j = UnitRange{Int32}(i, lim)
                 Lj2 = Nvals[j+1]^2
-                # buf = zeros(Cdouble, Li2*Lj2)
                 buf = zeros(T, Li2*Lj2)
                 idx = index2(i,j) + 1
                 ij_vals[idx] = (i+1,j+1)

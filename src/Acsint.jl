@@ -8,9 +8,6 @@ using Combinatorics: doublefactorial
 using LinearAlgebra: norm, eigen
 using StaticArrays
 
-using ForwardDiff
-import ForwardDiff: Dual, partials, value
-
 export generate_ERI_quartet!, generate_S_pair!, generate_T_pair!, generate_V_pair!
 
 const ang2bohr = 1.8897261246257702
