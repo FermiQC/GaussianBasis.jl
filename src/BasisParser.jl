@@ -92,7 +92,7 @@ function extract_atom_from_bs(file_path::String, AtomSymbol::String)
     if flag_atom
         return out
     else
-        throw(FermiException("Atom $AtomSymbol not found in $file_path."))
+        throw(ArgumentError("Atom $AtomSymbol not found in $file_path."))
     end
 end
 
@@ -159,7 +159,7 @@ function two_basis_from_string(bstring::String, atom::A; spherical=true) where A
     end
     AMsymbol = String(m.captures[1])
 
-    length(AMsymbol) == 2 || throw(FermiException("cannot extract two basis from $AMsymbol function"))
+    length(AMsymbol) == 2 || throw(ArgumentError("cannot extract two basis from $AMsymbol function"))
 
     l1 = AMDict[AMsymbol[1]*""]
     l2 = AMDict[AMsymbol[2]*""]
