@@ -24,7 +24,7 @@ function read_basisset(bname::String, atom::A; spherical=true) where A <: Atom
     AtomSymbol = Molecules.symbol(atom) 
 
     # Transform basis name to file name e.g. 6-31g* => 6-31g_st_
-    clean_bname = replace(bname, "*"=>"_st_")
+    clean_bname = replace(lowercase(bname), "*"=>"_st_")
     file_path = joinpath(LIBPATH, clean_bname*".gbs")
 
     if !(isfile(file_path))
