@@ -1,7 +1,7 @@
 const LIBPATH = joinpath(@__DIR__, "../lib")
 const AM_pat = r"([SPDFGHI]{1,2})\s+?(\d++)"
-const prim_pat = r"([+-]?\d*?\.\d+[D+-]{0,2}\d\d)\s+?([+-]?\d*?\.\d+[D+-]{0,2}+\d\d)"
-const prim_pat3 = r"([+-]?\d*?\.\d+[D+-]{0,2}\d\d)\s+?([+-]?\d*?\.\d+[D+-]{0,2}+\d\d)\s+?([+-]?\d*?\.\d+[D+-]{0,2}+\d\d)"
+const prim_pat = r"([+-]?\d*?\.\d*(?:D[+-]\d+)?)\s+?([+-]?\d*?\.\d*(?:D[+-]\d+)?)"
+const prim_pat3 = r"([+-]?\d*?\.\d*(?:D[+-]\d+)?)\s+?([+-]?\d*?\.\d*(?:D[+-]\d+)?)\s+?([+-]?\d*?\.\d*(?:D[+-]\d+)?)"
 const AMDict = Dict(
         "S" => 0,
         "P" => 1, 
@@ -24,7 +24,7 @@ function read_basisset(bname::String, atom::A; spherical=true) where A <: Atom
     AtomSymbol = Molecules.symbol(atom) 
 
     # Transform basis name to file name e.g. 6-31g* => 6-31g_st_
-    clean_bname = replace(bname, "*"=>"_st_")
+    clean_bname = replace(lowercase(bname), "*"=>"_st_")
     file_path = joinpath(LIBPATH, clean_bname*".gbs")
 
     if !(isfile(file_path))
