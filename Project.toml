@@ -17,7 +17,7 @@ libcint_jll = "574b78ca-bebd-517c-801d-4735c93a9686"
 [compat]
 Combinatorics = "1"
 Formatting = "^0.4"
-HDF5 = "^0.15.6"
+HDF5 = "0.15.6 - 0.17"
 SpecialFunctions = "2"
 StaticArrays = "1.4"
 Molecules = "0.3"
