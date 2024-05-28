@@ -130,6 +130,22 @@ function cint1e_ipovlp_sph!(buf::Array{Cdouble}, shls::Array{<:Integer}, lib::LC
     cint1e_ipovlp_sph!(buf, Cint.(shls.-1), lib.atm, lib.natm, lib.bas, lib.nbas, lib.env)
 end
 
+function cint1e_ipipovlp_sph!(buf, shls, atm, natm, bas, nbas, env)
+    @ccall LIBCINT.cint1e_ipipovlp_sph(
+                                    buf  :: Ptr{Cdouble},
+                                    shls :: Ptr{Cint},
+                                    atm  :: Ptr{Cint},
+                                    natm :: Cint,
+                                    bas  :: Ptr{Cint},
+                                    nbas :: Cint,
+                                    env  :: Ptr{Cdouble}
+                                   )::Cvoid
+end
+function cint1e_ipipovlp_sph!(buf::Array{Cdouble}, shls::Array{<:Integer}, lib::LCint)
+    cint1e_ipipovlp_sph!(buf, Cint.(shls.-1), lib.atm, lib.natm, lib.bas, lib.nbas, lib.env)
+end
+
+
 function cint1e_ipkin_sph!(buf, shls, atm, natm, bas, nbas, env)
     @ccall LIBCINT.cint1e_ipkin_sph(
                                     buf  :: Ptr{Cdouble},
