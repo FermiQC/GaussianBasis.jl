@@ -130,7 +130,6 @@ function ERI_2e4c(BS::BasisSet)
 end
 
 function ERI_2e4c!(out, BS::BasisSet)
-
     # Save a list containing the number of basis for each shell
     Nvals = num_basis.(BS.basis)
     Nmax = maximum(Nvals)
@@ -162,70 +161,52 @@ function ERI_2e4c!(out, BS::BasisSet)
 
     # Initialize array for results
     bufs = [zeros(Cdouble, Nmax^4) for _ = 1:Threads.nthreads()]
-    @sync for (i,j,k,l) in unique_idx
-        Threads.@spawn begin
-            @inbounds begin
-                # Shift indexes (C starts with 0, Julia 1)
-                id, jd, kd, ld = i+1, j+1, k+1, l+1
-                Ni, Nj, Nk, Nl = Nvals[id], Nvals[jd], Nvals[kd], Nvals[ld]
+    Threads.@threads :static for (i,j,k,l) in unique_idx
+        # Shift indexes (C starts with 0, Julia 1)
+        id, jd, kd, ld = i+1, j+1, k+1, l+1
+        Ni, Nj, Nk, Nl = Nvals[id], Nvals[jd], Nvals[kd], Nvals[ld]
 
-                buf = bufs[Threads.threadid()]
-                # Compute ERI
-                ERI_2e4c!(buf, BS, id, jd, kd, ld)
+        buf = bufs[Threads.threadid()]
+        # Compute ERI
+        ERI_2e4c!(buf, BS, id, jd, kd, ld)
 
-                # Move results to output array
-                ri, rj, rk, rl = ranges[id], ranges[jd], ranges[kd], ranges[ld]
-                out[ri, rj, rk, rl] .= reshape(buf[1:Ni*Nj*Nk*Nl], (Ni, Nj, Nk, Nl))
+        # Move results to output array
+        ri, rj, rk, rl = ranges[id], ranges[jd], ranges[kd], ranges[ld]
+        out[ri, rj, rk, rl] .= reshape(@view(buf[1:Ni*Nj*Nk*Nl]), (Ni, Nj, Nk, Nl))
 
-                if i != j && k != l && index2(i,j) != index2(k,l)
-                    # i,j permutation
-                    out[rj, ri, rk, rl] .= permutedims(out[ri, rj, rk, rl], (2,1,3,4))
-                    # k,l permutation
-                    out[ri, rj, rl, rk] .= permutedims(out[ri, rj, rk, rl], (1,2,4,3))
-
-                    # i,j + k,l permutatiom
-                    out[rj, ri, rl, rk] .= permutedims(out[ri, rj, rk, rl], (2,1,4,3))
-
-                    # ij, kl permutation
-                    out[rk, rl, ri, rj] .= permutedims(out[ri, rj, rk, rl], (3,4,1,2))
-                    # ij, kl + k,l permutation
-                    out[rl, rk, ri, rj] .= permutedims(out[ri, rj, rk, rl], (4,3,1,2))
-                    # ij, kl + i,j permutation
-                    out[rk, rl, rj, ri] .= permutedims(out[ri, rj, rk, rl], (3,4,2,1))
-                    # ij, kl + i,j + k,l permutation
-                    out[rl, rk, rj, ri] .= permutedims(out[ri, rj, rk, rl], (4,3,2,1))
-
-                elseif k != l && index2(i,j) != index2(k,l)
-                    # k,l permutation
-                    out[ri, rj, rl, rk] .= permutedims(out[ri, rj, rk, rl], (1,2,4,3))
-                    # ij, kl permutation
-                    out[rk, rl, ri, rj] .= permutedims(out[ri, rj, rk, rl], (3,4,1,2))
-                    # ij, kl + k,l permutation
-                    out[rl, rk, ri, rj] .= permutedims(out[ri, rj, rk, rl], (4,3,1,2))
-
-                elseif i != j && index2(i,j) != index2(k,l)
-                    # i,j permutation
-                    out[rj, ri, rk, rl] .= permutedims(out[ri, rj, rk, rl], (2,1,3,4))
-
-                    # ij, kl permutation
-                    out[rk, rl, ri, rj] .= permutedims(out[ri, rj, rk, rl], (3,4,1,2))
-                    # ij, kl + i,j permutation
-                    out[rk, rl, rj, ri] .= permutedims(out[ri, rj, rk, rl], (3,4,2,1))
-        
-                elseif i != j && k != l 
-                    # i,j permutation
-                    out[rj, ri, rk, rl] .= permutedims(out[ri, rj, rk, rl], (2,1,3,4))
-                    # k,l permutation
-                    out[ri, rj, rl, rk] .= permutedims(out[ri, rj, rk, rl], (1,2,4,3))
-
-                    # i,j + k,l permutatiom
-                    out[rj, ri, rl, rk] .= permutedims(out[ri, rj, rk, rl], (2,1,4,3))
-                elseif index2(i,j) != index2(k,l) 
-                    # ij, kl permutation
-                    out[rk, rl, ri, rj] .= permutedims(out[ri, rj, rk, rl], (3,4,1,2))
-                end
-            end #inbounds
-        end #spawn
+        if i != j && k != l && index2(i,j) != index2(k,l)
+            @inbounds for ni = ri, nj = rj, nk = rk, nl = rl
+                out[nj, ni, nk, nl] = out[ni, nj, nk, nl]
+                out[ni, nj, nl, nk] = out[ni, nj, nk, nl]
+                out[nj, ni, nl, nk] = out[ni, nj, nk, nl]
+                out[nk, nl, ni, nj] = out[ni, nj, nk, nl]
+                out[nl, nk, ni, nj] = out[ni, nj, nk, nl]
+                out[nk, nl, nj, ni] = out[ni, nj, nk, nl]
+                out[nl, nk, nj, ni] = out[ni, nj, nk, nl]
+            end
+        elseif k != l && index2(i,j) != index2(k,l)
+            @inbounds for ni = ri, nj = rj, nk = rk, nl = rl
+                out[ni, nj, nl, nk] = out[ni, nj, nk, nl]
+                out[nk, nl, ni, nj] = out[ni, nj, nk, nl]
+                out[nl, nk, ni, nj] = out[ni, nj, nk, nl]
+            end
+        elseif i != j && index2(i,j) != index2(k,l)
+            @inbounds for ni = ri, nj = rj, nk = rk, nl = rl
+                out[nj, ni, nk, nl] = out[ni, nj, nk, nl]
+                out[nk, nl, ni, nj] = out[ni, nj, nk, nl]
+                out[nk, nl, nj, ni] = out[ni, nj, nk, nl]
+            end
+        elseif i != j && k != l
+            @inbounds for ni = ri, nj = rj, nk = rk, nl = rl
+                out[nj, ni, nk, nl] = out[ni, nj, nk, nl]
+                out[ni, nj, nl, nk] = out[ni, nj, nk, nl]
+                out[nj, ni, nl, nk] = out[ni, nj, nk, nl]
+            end
+        elseif index2(i,j) != index2(k,l)
+            @inbounds for ni = ri, nj = rj, nk = rk, nl = rl
+                out[nk, nl, ni, nj] = out[ni, nj, nk, nl]
+            end
+        end
     end #sync
 
     return out
