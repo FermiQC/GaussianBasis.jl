@@ -65,3 +65,15 @@ end
     μ = 2 .* sum(d3[i,:,i] for i=1:5)
     @test isapprox(μ, [-40.280477, 43.202326, 0.0000], atol=1e-5)
 end
+
+@testset "Multipole" begin
+    h5open("pyscf_test.h5", "r") do testfile
+        bs = BasisSet(read(testfile, "basis"), read(testfile, "atom"))
+
+        @test GaussianBasis.kinetic(bs) ≈ read(testfile, "kinetic")
+        @test GaussianBasis.dipole(bs) ≈ read(testfile, "dipole")
+        @test GaussianBasis.quadrupole(bs) ≈ read(testfile, "quadrupole")
+        @test GaussianBasis.octupole(bs) ≈ read(testfile, "octupole")
+        @test GaussianBasis.hexadecapole(bs) ≈ read(testfile, "hexadecapole")
+    end
+end

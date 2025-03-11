@@ -50,49 +50,44 @@ overlap!(out, BS::BasisSet) = get_1e_matrix!(overlap!, out, BS)
 kinetic!(out, BS::BasisSet) = get_1e_matrix!(kinetic!, out, BS)
 nuclear!(out, BS::BasisSet) = get_1e_matrix!(nuclear!, out, BS)
 
-function get_1e_matrix(callback, BS::BasisSet)
-    out = zeros(eltype(BS.atoms[1].xyz), BS.nbas, BS.nbas)
-    get_1e_matrix!(callback, out, BS)
+function get_1e_matrix(callback, BS::BasisSet, rank::Integer = 0)
+    out = zeros(eltype(BS.atoms[1].xyz), BS.nbas, BS.nbas, Iterators.repeated(3, rank)...)
+    return get_1e_matrix!(callback, out, BS, rank)
 end
 
-function get_1e_matrix!(callback, out, BS::BasisSet)
-
-    # Pre compute number of basis per shell
+function get_1e_matrix!(callback, out, BS::BasisSet, rank::Integer = 0)
     Nvals = num_basis.(BS.basis)
     Nmax = maximum(Nvals)
 
     # Offset list for each shell, used to map shell index to AO index
     ao_offset = [sum(Nvals[1:(i-1)]) for i = 1:BS.nshells]
 
-    buf_arrays = [zeros(eltype(BS.atoms[1].xyz), Nmax^2) for _ = 1:Threads.nthreads()]
+    buf_arrays = [zeros(eltype(BS.atoms[1].xyz), 3^rank * Nmax^2) for _ = 1:Threads.nthreads()]
 
-    @sync for i in 1:BS.nshells
-        Threads.@spawn begin
-            @inbounds begin
-                Li = Nvals[i]
-                buf = buf_arrays[Threads.threadid()]
-                ioff = ao_offset[i]
-                for j in i:BS.nshells
-                    Lj = Nvals[j]
-                    joff = ao_offset[j]
+    Threads.@threads :static for i in 1:BS.nshells
+        Ni = Nvals[i]
+        buf = buf_arrays[Threads.threadid()]
+        ioff = ao_offset[i]
+        for j in i:BS.nshells
+            Nj = Nvals[j]
+            Nij = Ni*Nj
+            joff = ao_offset[j]
 
-                    # Call libcint
-                    callback(buf, BS, i, j)
+            callback(buf, BS, i, j)
+            I = (ioff+1):(ioff+Ni)
+            J = (joff+1):(joff+Nj)
 
-                    # Loop through shell block and save unique elements
-                    for js = 1:Lj
-                        J = joff + js
-                        for is = 1:Li
-                            I = ioff + is
-                            J < I ? break : nothing
-                            out[I,J] = buf[is + Li*(js-1)]
-                            out[J,I] = out[I,J]
-                        end
-                    end
+            # Get strides for each cartesian product
+            for (n, ks) in enumerate(Iterators.product(Iterators.repeated(1:3, rank)...))
+                r = Nij*(n-1)+1:n*Nij
+                kvals = reshape(view(buf, r), Ni, Nj)
+                out[I,J,ks...] .+= kvals
+                if i != j
+                    out[J,I,ks...] .+= kvals'
                 end
-            end #inbounds
-        end #spawn
-    end #sync
+            end
+        end
+    end
     return out
 end
 
