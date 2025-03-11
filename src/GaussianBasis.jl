@@ -1,7 +1,7 @@
 module GaussianBasis
 
 using Molecules
-using Formatting
+using Format
 using StaticArrays
 import Molecules: Atom, symbol, parse_file, parse_string
 
