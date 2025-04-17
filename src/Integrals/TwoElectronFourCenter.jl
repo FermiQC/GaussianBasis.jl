@@ -22,7 +22,7 @@ function sparseERI_2e4c(BS::BasisSet, cutoff = 1e-12)
     # Pre allocate array to save ij pairs
     ij_vals = Array{NTuple{2,Int32}}(undef, num_ij)
 
-    # Pre allocate array to save σij, that is the screening parameter for Schwarz 
+    # Pre allocate array to save σij, that is the screening parameter for Schwarz
     σvals = zeros(T, num_ij)
 
     ### Loop thorugh i and j such that i ≤ j. Save each pair into ij_vals and compute √σij for integral screening
@@ -42,14 +42,14 @@ function sparseERI_2e4c(BS::BasisSet, cutoff = 1e-12)
     end
 
     buf_arrays = [zeros(T, Nmax^4) for _ = 1:Threads.nthreads()]
-    
+
     # i,j,k,l => Shell indexes starting at zero
     # I, J, K, L => AO indexes starting at one
     @sync for ij in eachindex(ij_vals)
         Threads.@spawn begin
         @inbounds begin
             buf = buf_arrays[Threads.threadid()]
-            i,j = ij_vals[ij] 
+            i,j = ij_vals[ij]
             Li, Lj = Nvals[i], Nvals[j]
             Lij = Li*Lj
             ioff = ao_offset[i]
@@ -59,7 +59,7 @@ function sparseERI_2e4c(BS::BasisSet, cutoff = 1e-12)
                 if σ < cutoff
                     continue
                 end
-                k,l = ij_vals[kl] 
+                k,l = ij_vals[kl]
                 Lk, Ll = Nvals[k], Nvals[l]
                 Lijk = Lij*Lk
                 koff = ao_offset[k]
@@ -80,7 +80,7 @@ function sparseERI_2e4c(BS::BasisSet, cutoff = 1e-12)
                         L < K ? break : nothing
 
                         # L ≥ K
-                        KL = (L * (L + 1)) >> 1 + K                            
+                        KL = (L * (L + 1)) >> 1 + K
                         bkl = Lij*(ks-1) + bl
                         for js = 1:Lj
                             J = joff + js
@@ -91,7 +91,7 @@ function sparseERI_2e4c(BS::BasisSet, cutoff = 1e-12)
 
                                 IJ = (J * (J + 1)) >> 1 + I
 
-                                #KL < IJ ? continue : nothing # This restriction does not work... idk why 
+                                #KL < IJ ? continue : nothing # This restriction does not work... idk why
 
                                 idx = index2(IJ,KL) + 1
                                 out[idx] = buf[is + bjkl]
@@ -125,7 +125,7 @@ end
 
 function ERI_2e4c(BS::BasisSet)
     N = BS.nbas
-    out = zeros(N, N, N, N)
+    out = zeros(eltype(BS.atoms[1].xyz), N, N, N, N)
     ERI_2e4c!(out, BS)
 end
 
@@ -160,13 +160,12 @@ function ERI_2e4c!(out, BS::BasisSet)
     end
 
     # Initialize array for results
-    bufs = [zeros(Cdouble, Nmax^4) for _ = 1:Threads.nthreads()]
-    Threads.@threads :static for (i,j,k,l) in unique_idx
+    buf = zeros(eltype(out), Nmax^4)
+    for (i,j,k,l) in unique_idx
         # Shift indexes (C starts with 0, Julia 1)
         id, jd, kd, ld = i+1, j+1, k+1, l+1
         Ni, Nj, Nk, Nl = Nvals[id], Nvals[jd], Nvals[kd], Nvals[ld]
 
-        buf = bufs[Threads.threadid()]
         # Compute ERI
         ERI_2e4c!(buf, BS, id, jd, kd, ld)
 
