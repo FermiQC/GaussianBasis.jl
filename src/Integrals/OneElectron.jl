@@ -11,7 +11,7 @@ function nuclear!(out, BS::BasisSet{LCint}, i, j)
     cint1e_nuc_sph!(out, [i,j], BS.lib)
 end
 
-# Backend: ACSint -- fall back 
+# Backend: ACSint -- fall back
 function overlap!(out, BS::BasisSet, i, j)
     generate_S_pair!(out, BS, i ,j)
 end
@@ -62,11 +62,10 @@ function get_1e_matrix!(callback, out, BS::BasisSet, rank::Integer = 0)
     # Offset list for each shell, used to map shell index to AO index
     ao_offset = [sum(Nvals[1:(i-1)]) for i = 1:BS.nshells]
 
-    buf_arrays = [zeros(eltype(BS.atoms[1].xyz), 3^rank * Nmax^2) for _ = 1:Threads.nthreads()]
+    buf = zeros(eltype(BS.atoms[1].xyz), 3^rank * Nmax^2)
 
-    Threads.@threads :static for i in 1:BS.nshells
+    for i in 1:BS.nshells
         Ni = Nvals[i]
-        buf = buf_arrays[Threads.threadid()]
         ioff = ao_offset[i]
         for j in i:BS.nshells
             Nj = Nvals[j]
@@ -91,11 +90,11 @@ function get_1e_matrix!(callback, out, BS::BasisSet, rank::Integer = 0)
     return out
 end
 
-########################################################### 
-########################################################### 
+###########################################################
+###########################################################
 #                       Mixed basis                       #
-########################################################### 
-########################################################### 
+###########################################################
+###########################################################
 
 # Backend: ACSint -- fall back
 function overlap!(out, BS1::BasisSet, BS2::BasisSet, i, j)
