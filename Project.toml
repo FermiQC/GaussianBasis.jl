@@ -1,7 +1,7 @@
 name = "GaussianBasis"
 uuid = "9bb1a3dc-0d1c-467e-84f5-0c4ef701360a"
 authors = ["gustavojra <gustavo.aroeira@gmail.com>"]
-version = "0.5.0"
+version = "0.5.1"
 
 [deps]
 Combinatorics = "861a8166-3701-5b0c-9a16-15d98fcdc6aa"
