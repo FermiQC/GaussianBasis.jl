@@ -116,7 +116,7 @@ function ERI_2e4c(BS::BasisSet, i, j, k, l)
 end
 
 function ERI_2e4c!(out, BS::BasisSet{LCint}, i, j, k, l)
-    cint2e_sph!(out, [i,j,k,l], BS.lib)
+    cint2e_sph!(out, @SVector([i,j,k,l]), BS.lib)
 end
 
 function ERI_2e4c!(out, BS::BasisSet, i, j, k, l)

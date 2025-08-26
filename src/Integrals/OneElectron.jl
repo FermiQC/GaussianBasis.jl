@@ -1,14 +1,14 @@
 # Backend: Libcint
 function overlap!(out, BS::BasisSet{LCint}, i, j)
-    cint1e_ovlp_sph!(out, [i,j], BS.lib)
+    cint1e_ovlp_sph!(out, @SVector([i,j]), BS.lib)
 end
 
 function kinetic!(out, BS::BasisSet{LCint}, i, j)
-    cint1e_kin_sph!(out, [i,j], BS.lib)
+    cint1e_kin_sph!(out, @SVector([i,j]), BS.lib)
 end
 
 function nuclear!(out, BS::BasisSet{LCint}, i, j)
-    cint1e_nuc_sph!(out, [i,j], BS.lib)
+    cint1e_nuc_sph!(out, @SVector([i,j]), BS.lib)
 end
 
 # Backend: ACSint -- fall back 
