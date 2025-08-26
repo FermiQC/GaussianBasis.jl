@@ -62,15 +62,14 @@ function get_1e_matrix!(callback, out, BS::BasisSet, rank::Integer = 0)
     # Offset list for each shell, used to map shell index to AO index
     ao_offset = [sum(Nvals[1:(i-1)]) for i = 1:BS.nshells]
 
-    buf_arrays = [zeros(eltype(BS.atoms[1].xyz), 3^rank * Nmax^2) for _ = 1:Threads.nthreads()]
+    ijs = Iterators.flatten((((i,j) for i = 1:j) for j = 1:BS.nshells))
 
-    Threads.@threads :static for i in 1:BS.nshells
-        Ni = Nvals[i]
-        buf = buf_arrays[Threads.threadid()]
-        ioff = ao_offset[i]
-        for j in i:BS.nshells
+    allocate(body) = body(zeros(Cdouble, 3^rank * Nmax^2))
+    workerpool(allocate, ijs; chunksize=10) do (i,j), buf
+            Ni = Nvals[i]
             Nj = Nvals[j]
             Nij = Ni*Nj
+            ioff = ao_offset[i]
             joff = ao_offset[j]
 
             callback(buf, BS, i, j)
@@ -86,7 +85,6 @@ function get_1e_matrix!(callback, out, BS::BasisSet, rank::Integer = 0)
                     out[J,I,ks...] .+= kvals'
                 end
             end
-        end
     end
     return out
 end
@@ -153,33 +151,30 @@ function get_1e_matrix!(callback, out, BS1::BasisSet, BS2::BasisSet)
     ao_offset1 = [sum(Nvals1[1:(i-1)]) for i = 1:BS1.nshells]
     ao_offset2 = [sum(Nvals2[1:(i-1)]) for i = 1:BS2.nshells]
 
-    buf_arrays = [zeros(Cdouble, Nmax1*Nmax2) for _ = 1:Threads.nthreads()]
+    allocate(body) = body(zeros(Cdouble, Nmax1*Nmax2))
+    workerpool(allocate, 1:BS1.nshells; chunksize = 1) do i, buf
+        @inbounds begin
+            Li = Nvals1[i]
+            buf = zeros(Cdouble, Nmax1*Nmax2)
+            ioff = ao_offset1[i]
+            for j in 1:BS2.nshells
+                Lj = Nvals2[j]
+                joff = ao_offset2[j]
 
-    @sync for i in 1:BS1.nshells
-        Threads.@spawn begin
-            @inbounds begin
-                Li = Nvals1[i]
-                buf = buf_arrays[Threads.threadid()]
-                ioff = ao_offset1[i]
-                for j in 1:BS2.nshells
-                    Lj = Nvals2[j]
-                    joff = ao_offset2[j]
+                # Call libcint
+                callback(buf, BS1, BS2, i, j)
 
-                    # Call libcint
-                    callback(buf, BS1, BS2, i, j)
-
-                    # Loop through shell block and save unique elements
-                    for js = 1:Lj
-                        J = joff + js
-                        for is = 1:Li
-                            I = ioff + is
-                            out[I,J] = buf[is + Li*(js-1)]
-                        end
+                # Loop through shell block and save unique elements
+                for js = 1:Lj
+                    J = joff + js
+                    for is = 1:Li
+                        I = ioff + is
+                        out[I,J] = buf[is + Li*(js-1)]
                     end
                 end
-            end #inbounds
-        end #spawn
-    end #sync
+            end
+        end #inbounds
+    end
     return out
 end
 
@@ -200,32 +195,28 @@ function get_1e_matrix!(callback, out, BS1::BasisSet{LCint}, BS2::BasisSet{LCint
     ao_offset1 = [sum(Nvals1[1:(i-1)]) for i = 1:BS1.nshells]
     ao_offset2 = [sum(Nvals2[1:(i-1)]) for i = 1:BS2.nshells]
 
-    buf_arrays = [zeros(Cdouble, Nmax1*Nmax2) for _ = 1:Threads.nthreads()]
+    allocate(body) = body(zeros(Cdouble, Nmax1*Nmax2))
+    workerpool(allocate, 1:BS1.nshells; chunksize = 1) do i, buf
+        @inbounds begin
+            Li = Nvals1[i]
+            ioff = ao_offset1[i]
+            for j in 1:BS2.nshells
+                Lj = Nvals2[j]
+                joff = ao_offset2[j]
 
-    @sync for i in 1:BS1.nshells
-        Threads.@spawn begin
-            @inbounds begin
-                Li = Nvals1[i]
-                buf = buf_arrays[Threads.threadid()]
-                ioff = ao_offset1[i]
-                for j in 1:BS2.nshells
-                    Lj = Nvals2[j]
-                    joff = ao_offset2[j]
+                # Call libcint
+                callback(buf, Bmerged, i, j+BS1.nshells)
 
-                    # Call libcint
-                    callback(buf, Bmerged, i, j+BS1.nshells)
-
-                    # Loop through shell block and save unique elements
-                    for js = 1:Lj
-                        J = joff + js
-                        for is = 1:Li
-                            I = ioff + is
-                            out[I,J] = buf[is + Li*(js-1)]
-                        end
+                # Loop through shell block and save unique elements
+                for js = 1:Lj
+                    J = joff + js
+                    for is = 1:Li
+                        I = ioff + is
+                        out[I,J] = buf[is + Li*(js-1)]
                     end
                 end
-            end #inbounds
-        end #spawn
-    end #sync
+            end
+        end #inbounds
+    end
     return out
 end

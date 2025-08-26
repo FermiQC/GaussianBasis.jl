@@ -136,3 +136,22 @@ end
 function show(io::IO, ::MIME"text/plain", X::T) where T<:Union{BasisFunction, BasisSet}
     print(io, string_repr(X))
 end
+
+# adapted from https://juliafolds.github.io/data-parallelism/tutorials/concurrency-patterns/
+function workerpool(work!, allocate, inputs; chunksize,ntasks = Threads.threadpoolsize())
+    requests = Channel{Vector{eltype(inputs)}}(Inf)
+    for chunk in Iterators.partition(inputs, chunksize)
+        put!(requests, chunk)
+    end
+    close(requests)
+
+    @sync for _ in 1:ntasks
+        Threads.@spawn allocate() do resource
+            for chunk in requests
+                for input in chunk
+                    work!(input, resource)
+                end
+            end
+        end
+    end
+end

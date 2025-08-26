@@ -35,13 +35,12 @@ function ∇1e!(out, BS::BasisSet, compute::String, iA)
     Nvals = num_basis.(BS.basis)
     ao_offset = [sum(Nvals[1:(i-1)]) for i = 1:BS.nshells]
     Nmax = maximum(Nvals)
-    buf_arrays = [zeros(Cdouble, 3*Nmax^2) for _ = 1:Threads.nthreads()]
-    @sync for i in Ashells
-        Threads.@spawn begin
+
+    allocate(body) = body(zeros(Cdouble, 3*Nmax^2))
+    workerpool(allocate, Ashells; chunksize = 1) do i, buf
         @inbounds begin
             Ni = Nvals[i]
             ioff = ao_offset[i]
-            buf = buf_arrays[Threads.threadid()]
             for j in notAshells
                 Nj = Nvals[j]
                 joff = ao_offset[j]
@@ -63,8 +62,7 @@ function ∇1e!(out, BS::BasisSet, compute::String, iA)
                 out[J,I,:] .+= permutedims(out[I,J,:], (2,1,3))
             end
         end #inbounds
-        end #spawn 
-    end #sync
+    end
     return out
 end
 
@@ -113,15 +111,13 @@ function ∇nuclear!(out, BS::BasisSet, iA)
     Nvals = num_basis.(BS.basis)
     ao_offset = [sum(Nvals[1:(i-1)]) for i = 1:BS.nshells]
     Nmax = maximum(Nvals)
-    buf_arrays = [zeros(Cdouble, 3*Nmax^2) for _ = 1:Threads.nthreads()]
     # i ∉ A & j ∉ A
-    @sync for i in notAshells
-        Threads.@spawn begin
+    allocate(body) = body(zeros(Cdouble, 3*Nmax^2))
+    workerpool(allocate, notAshells; chunksize = 1) do i, buf
         @inbounds begin
             Ni = Nvals[i]
             ioff = ao_offset[i]
             I = (ioff+1):(ioff+Ni)
-            buf = buf_arrays[Threads.threadid()]
             for j in notAshells
                 Nj = Nvals[j]
                 Nij = Ni*Nj
@@ -139,17 +135,14 @@ function ∇nuclear!(out, BS::BasisSet, iA)
                 end
             end
         end # inbounds
-        end # #spawn 
-    end # sync
+    end
 
     # i ∈ A & j ∈ A
-    @sync for i in Ashells
-        Threads.@spawn begin
+    workerpool(allocate, Ashells; chunksize = 1) do i, buf
         @inbounds begin
             Ni = Nvals[i]
             ioff = ao_offset[i]
             I = (ioff+1):(ioff+Ni)
-            buf = buf_arrays[Threads.threadid()]
             for j in Ashells
                 Nj = Nvals[j]
                 Nij = Ni*Nj
@@ -166,17 +159,14 @@ function ∇nuclear!(out, BS::BasisSet, iA)
                 end
             end
         end #inbounds
-        end #spawn
-    end #sync
+    end
 
     # i ∈ A & j ∉ A
-    @sync for i in Ashells
-        Threads.@spawn begin
+    workerpool(allocate, Ashells; chunksize = 1) do i, buf
         @inbounds begin
             Ni = Nvals[i]
             ioff = ao_offset[i]
             I = (ioff+1):(ioff+Ni)
-            buf = buf_arrays[Threads.threadid()]
             for j in notAshells
                 Nj = Nvals[j]
                 Nij = Ni*Nj
@@ -199,8 +189,7 @@ function ∇nuclear!(out, BS::BasisSet, iA)
                 end
             end
         end #inbounds
-        end #spawn
-    end #sync
+    end
 
     # Add transpose values
     # This must be done outside the threaded loops
