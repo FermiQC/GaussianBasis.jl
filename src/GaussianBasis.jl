@@ -38,10 +38,10 @@ P shell with 3 basis built from 2 primitive gaussians
      +    0.7071067812⋅Y₁₁⋅r¹⋅exp(-1.2⋅r²)
 ```
 """
-struct SphericalShell{A<:Atom, N, R} <: BasisFunction
+struct SphericalShell{A<:Atom, R} <: BasisFunction
     l::Int
-    coef::SVector{N, R}
-    exp::SVector{N, R}
+    coef::Vector{R}
+    exp::Vector{R}
     atom::A
 end
 
@@ -77,10 +77,10 @@ D shell with 6 basis built from 1 primitive gaussians
 χ(z²) =    0.7071067812⋅z²⋅exp(-5.0⋅r²)
 ```
 """
-struct CartesianShell{A<:Atom, N, R} <: BasisFunction
+struct CartesianShell{A<:Atom, R} <: BasisFunction
     l::Int
-    coef::SVector{N, R}
-    exp::SVector{N, R}
+    coef::Vector{R}
+    exp::Vector{R}
     atom::A
 end
 
