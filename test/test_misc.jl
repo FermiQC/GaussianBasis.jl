@@ -8,12 +8,12 @@ H   -2.488218762100    2.295059432700   -1.008766153900
 H   -2.488220057000    3.155340844300    0.512081313000""")
 
 shells = [
-    SphericalShell(0, SVector(1/√2, 1/√2), SVector(5.0, 1.2), atoms[1])
-    SphericalShell(1, SVector(1/√2, 1/√2), SVector(5.0, 1.2), atoms[1])
-    SphericalShell(0, SVector(1/√2, 1/√2), SVector(5.0, 1.2), atoms[2])
-    SphericalShell(0, SVector(1/√2, 1/√2), SVector(5.0, 1.2), atoms[3])
-    SphericalShell(0, SVector(1/√2, 1/√2), SVector(5.0, 1.2), atoms[4])
-    SphericalShell(0, SVector(1/√2, 1/√2), SVector(5.0, 1.2), atoms[5])
+    SphericalShell(0, [1/√2, 1/√2], [5.0, 1.2], atoms[1])
+    SphericalShell(1, [1/√2, 1/√2], [5.0, 1.2], atoms[1])
+    SphericalShell(0, [1/√2, 1/√2], [5.0, 1.2], atoms[2])
+    SphericalShell(0, [1/√2, 1/√2], [5.0, 1.2], atoms[3])
+    SphericalShell(0, [1/√2, 1/√2], [5.0, 1.2], atoms[4])
+    SphericalShell(0, [1/√2, 1/√2], [5.0, 1.2], atoms[5])
 ]
 
 bset = BasisSet("Test", atoms, shells)
