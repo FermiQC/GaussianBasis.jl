@@ -334,7 +334,7 @@ function generate_ERI_quartet!(out, BS::BasisSet, s1, s2, s3, s4, α::Float64=1.
 end
 
 function generate_ERI_quartet!(out, B1::CartesianShell, B2::CartesianShell, B3::CartesianShell, B4::CartesianShell,
-                              α::Float64=1.0, β::Float64=0.0, ⍵::Float64=0.0; cutoff = 1e-16)
+                              α::Float64=1.0, β::Float64=0.0, ⍵::Float64=0.0; cutoff = 1e-18)
 
     """ Generates generalized Coulomb integrals of the form
         α + β(erf ⍵ R)
@@ -427,7 +427,7 @@ end
     # 9.2.12
     µ = a * b / p
     # 9.2.15
-    @inbounds @fastmath @. E[:, 1, 1, 1] = exp(-µ * AB^2)
+    @inbounds @. E[:, 1, 1, 1] = exp(-µ * AB^2)
     oo2p = 1 / (2 * p)
     @inbounds for j = 1 : maxam2 + 1
         for i = 1 : maxam1 + 1
