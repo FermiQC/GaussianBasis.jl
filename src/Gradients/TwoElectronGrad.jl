@@ -212,7 +212,7 @@ function ∇sparseERI_2e4c(BS::BasisSet, iA)
         end
     end
 
-    buf_arrays = [zeros(Cdouble, 3*Nmax^4) for _ = 1:Threads.nthreads()]
+    buf = zeros(Cdouble, 3*Nmax^4)
     
     # i,j,k,l => Shell indexes starting at zero
     # I, J, K, L => AO indexes starting at one
@@ -220,7 +220,6 @@ function ∇sparseERI_2e4c(BS::BasisSet, iA)
     #@sync for ij in eachindex(ij_vals)
         #Threads.@spawn begin
         #@inbounds begin
-            buf = buf_arrays[Threads.threadid()]
             i,j = ij_vals[ij]
             Ni, Nj = Nvals[i], Nvals[j]
             Nij = Ni*Nj

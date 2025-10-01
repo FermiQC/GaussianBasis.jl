@@ -30,7 +30,7 @@ function cint1e_ovlp_sph!(buf, shls, atm, natm, bas, nbas, env)
                                     env  :: Ptr{Cdouble}
                                 )::Cvoid
 end
-function cint1e_ovlp_sph!(buf::Array{Cdouble}, shls::Array{<:Integer}, lib::LCint) 
+function cint1e_ovlp_sph!(buf::Array{Cdouble}, shls::AbstractArray{<:Integer}, lib::LCint)
     cint1e_ovlp_sph!(buf, Cint.(shls.-1), lib.atm, lib.natm, lib.bas, lib.nbas, lib.env)
 end
 
@@ -45,7 +45,7 @@ function cint1e_kin_sph!(buf, shls, atm, natm, bas, nbas, env)
                                     env  :: Ptr{Cdouble}
                                 )::Cvoid
 end
-function cint1e_kin_sph!(buf::Array{Cdouble}, shls::Array{<:Integer}, lib::LCint) 
+function cint1e_kin_sph!(buf::Array{Cdouble}, shls::AbstractArray{<:Integer}, lib::LCint)
     cint1e_kin_sph!(buf, Cint.(shls.-1), lib.atm, lib.natm, lib.bas, lib.nbas, lib.env)
 end
 
@@ -60,7 +60,7 @@ function cint1e_nuc_sph!(buf, shls, atm, natm, bas, nbas, env)
                                     env  :: Ptr{Cdouble}
                                 )::Cvoid
 end
-function cint1e_nuc_sph!(buf::Array{Cdouble}, shls::Array{<:Integer}, lib::LCint) 
+function cint1e_nuc_sph!(buf::Array{Cdouble}, shls::AbstractArray{<:Integer}, lib::LCint)
     cint1e_nuc_sph!(buf, Cint.(shls.-1), lib.atm, lib.natm, lib.bas, lib.nbas, lib.env)
 end
 
@@ -77,7 +77,7 @@ function cint2e_sph!(buf, shls, atm, natm, bas, nbas, env)
                                     opt :: Ptr{UInt8},
                                 )::Cvoid
 end
-function cint2e_sph!(buf::Array{Cdouble}, shls::Array{<:Integer}, lib::LCint) 
+function cint2e_sph!(buf::Array{Cdouble}, shls::AbstractArray{<:Integer}, lib::LCint)
     cint2e_sph!(buf, Cint.(shls.-1), lib.atm, lib.natm, lib.bas, lib.nbas, lib.env)
 end
 
@@ -94,7 +94,7 @@ function cint2c2e_sph!(buf, shls, atm, natm, bas, nbas, env)
                                     opt :: Ptr{UInt8},
                                 )::Cvoid
 end
-function cint2c2e_sph!(buf::Array{Cdouble}, shls::Array{<:Integer}, lib::LCint) 
+function cint2c2e_sph!(buf::Array{Cdouble}, shls::AbstractArray{<:Integer}, lib::LCint)
     cint2c2e_sph!(buf, Cint.(shls.-1), lib.atm, lib.natm, lib.bas, lib.nbas, lib.env)
 end
 
@@ -111,7 +111,7 @@ function cint3c2e_sph!(buf, shls, atm, natm, bas, nbas, env)
                                     opt :: Ptr{UInt8},
                                 )::Cvoid
 end
-function cint3c2e_sph!(buf::Array{Cdouble}, shls::Array{<:Integer}, lib::LCint) 
+function cint3c2e_sph!(buf::Array{Cdouble}, shls::AbstractArray{<:Integer}, lib::LCint)
     cint3c2e_sph!(buf, Cint.(shls.-1), lib.atm, lib.natm, lib.bas, lib.nbas, lib.env)
 end
 
@@ -126,7 +126,7 @@ function cint1e_ipovlp_sph!(buf, shls, atm, natm, bas, nbas, env)
                                     env  :: Ptr{Cdouble}
                                    )::Cvoid
 end
-function cint1e_ipovlp_sph!(buf::Array{Cdouble}, shls::Array{<:Integer}, lib::LCint) 
+function cint1e_ipovlp_sph!(buf::Array{Cdouble}, shls::AbstractArray{<:Integer}, lib::LCint)
     cint1e_ipovlp_sph!(buf, Cint.(shls.-1), lib.atm, lib.natm, lib.bas, lib.nbas, lib.env)
 end
 
@@ -141,7 +141,7 @@ function cint1e_ipipovlp_sph!(buf, shls, atm, natm, bas, nbas, env)
                                     env  :: Ptr{Cdouble}
                                    )::Cvoid
 end
-function cint1e_ipipovlp_sph!(buf::Array{Cdouble}, shls::Array{<:Integer}, lib::LCint)
+function cint1e_ipipovlp_sph!(buf::Array{Cdouble}, shls::AbstractArray{<:Integer}, lib::LCint)
     cint1e_ipipovlp_sph!(buf, Cint.(shls.-1), lib.atm, lib.natm, lib.bas, lib.nbas, lib.env)
 end
 
@@ -157,7 +157,7 @@ function cint1e_ipkin_sph!(buf, shls, atm, natm, bas, nbas, env)
                                     env  :: Ptr{Cdouble}
                                    )::Cvoid
 end
-function cint1e_ipkin_sph!(buf::Array{Cdouble}, shls::Array{<:Integer}, lib::LCint) 
+function cint1e_ipkin_sph!(buf::Array{Cdouble}, shls::AbstractArray{<:Integer}, lib::LCint)
     cint1e_ipkin_sph!(buf, Cint.(shls.-1), lib.atm, lib.natm, lib.bas, lib.nbas, lib.env)
 end
 
@@ -172,7 +172,7 @@ function cint1e_ipnuc_sph!(buf, shls, atm, natm, bas, nbas, env)
                                     env  :: Ptr{Cdouble}
                                    )::Cvoid
 end
-function cint1e_ipnuc_sph!(buf::Array{Cdouble}, shls::Array{<:Integer}, lib::LCint) 
+function cint1e_ipnuc_sph!(buf::Array{Cdouble}, shls::AbstractArray{<:Integer}, lib::LCint)
     cint1e_ipnuc_sph!(buf, Cint.(shls.-1), lib.atm, lib.natm, lib.bas, lib.nbas, lib.env)
 end
 
@@ -189,7 +189,7 @@ function cint2e_ip1_sph!(buf, shls, atm, natm, bas, nbas, env)
                                     opt :: Ptr{UInt8},
                                    )::Cvoid
 end
-function cint2e_ip1_sph!(buf::Array{Cdouble}, shls::Array{<:Integer}, lib::LCint) 
+function cint2e_ip1_sph!(buf::Array{Cdouble}, shls::AbstractArray{<:Integer}, lib::LCint)
     cint2e_ip1_sph!(buf, Cint.(shls.-1), lib.atm, lib.natm, lib.bas, lib.nbas, lib.env)
 end
 
@@ -204,7 +204,7 @@ function cint1e_r_sph!(buf, shls, atm, natm, bas, nbas, env)
                                     env  :: Ptr{Cdouble}
                                    )::Cvoid
 end
-function cint1e_r_sph!(buf::Array{Cdouble}, shls::Array{<:Integer}, lib::LCint) 
+function cint1e_r_sph!(buf::Array{Cdouble}, shls::AbstractArray{<:Integer}, lib::LCint)
     cint1e_r_sph!(buf, Cint.(shls.-1), lib.atm, lib.natm, lib.bas, lib.nbas, lib.env)
 end
 
@@ -219,7 +219,7 @@ function cint1e_rr_sph!(buf, shls, atm, natm, bas, nbas, env)
                                     env  :: Ptr{Cdouble}
                                    )::Cvoid
 end
-function cint1e_rr_sph!(buf::Array{Cdouble}, shls::Array{<:Integer}, lib::LCint)
+function cint1e_rr_sph!(buf::Array{Cdouble}, shls::AbstractArray{<:Integer}, lib::LCint)
     cint1e_rr_sph!(buf, Cint.(shls.-1), lib.atm, lib.natm, lib.bas, lib.nbas, lib.env)
 end
 
@@ -234,7 +234,7 @@ function cint1e_rrr_sph!(buf, shls, atm, natm, bas, nbas, env)
                                     env  :: Ptr{Cdouble}
                                    )::Cvoid
 end
-function cint1e_rrr_sph!(buf::Array{Cdouble}, shls::Array{<:Integer}, lib::LCint)
+function cint1e_rrr_sph!(buf::Array{Cdouble}, shls::AbstractArray{<:Integer}, lib::LCint)
     cint1e_rrr_sph!(buf, Cint.(shls.-1), lib.atm, lib.natm, lib.bas, lib.nbas, lib.env)
 end
 
@@ -249,7 +249,7 @@ function cint1e_rrrr_sph!(buf, shls, atm, natm, bas, nbas, env)
                                     env  :: Ptr{Cdouble}
                                    )::Cvoid
 end
-function cint1e_rrrr_sph!(buf::Array{Cdouble}, shls::Array{<:Integer}, lib::LCint)
+function cint1e_rrrr_sph!(buf::Array{Cdouble}, shls::AbstractArray{<:Integer}, lib::LCint)
     cint1e_rrrr_sph!(buf, Cint.(shls.-1), lib.atm, lib.natm, lib.bas, lib.nbas, lib.env)
 end
 
