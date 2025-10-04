@@ -133,13 +133,9 @@ function basis_from_string(bstring::String, atom::A; spherical=true) where A <: 
 
     if spherical
         normalize_spherical!(coef, exp, l)
-        coef = SVector{nprim}(coef)
-        exp = SVector{nprim}(exp)
         return SphericalShell(l, coef, exp, atom)
     else
         normalize_cartesian!(coef, exp, l)
-        coef = SVector{nprim}(coef)
-        exp = SVector{nprim}(exp)
         return CartesianShell(l, coef, exp, atom)
     end
 end
@@ -187,16 +183,10 @@ function two_basis_from_string(bstring::String, atom::A; spherical=true) where A
     if spherical
         normalize_spherical!(coef1, exp, l1)
         normalize_spherical!(coef2, exp, l2)
-        coef1 = SVector{nprim}(coef1)
-        coef2 = SVector{nprim}(coef2)
-        exp   = SVector{nprim}(exp)
         return SphericalShell(l1, coef1, exp, atom), SphericalShell(l2, coef2, exp, atom)
     else
         normalize_cartesian!(coef1, exp, l1)
         normalize_cartesian!(coef2, exp, l2)
-        coef1 = SVector{nprim}(coef1)
-        coef2 = SVector{nprim}(coef2)
-        exp   = SVector{nprim}(exp)
         return CartesianShell(l1, coef1, exp, atom), CartesianShell(l2, coef2, exp, atom)
     end
 end
