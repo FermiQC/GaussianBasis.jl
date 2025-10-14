@@ -4,7 +4,7 @@ function string_repr(B::SphericalShell)
 
     # Unicode for superscript is a bit messier, so gotta use control flow
     l_sup = B.l == 1 ? Char(0x00B9) :
-            B.l in [2,3] ? Char(0x00B1 + B.l) :
+            B.l in [2,3] ? Char(0x00B0 + B.l) :
             Char(0x2070 + B.l)
 
     nbas = 2*B.l + 1
