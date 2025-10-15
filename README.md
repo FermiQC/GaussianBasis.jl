@@ -232,3 +232,17 @@ julia> S
  1.0       0.646804
  0.646804  1.0
  ```
+
+### Evaluating orbital amplitudes
+
+The function `atomic_orbital_amplitude(basisset, i, r)` can be used to calculate the atomic orbital amplitude of the `i`th basis function at positions `r`. `r` can be either a 3-vector for a single position or a 3×… array for calculating many positions efficiently at once.
+
+```julia
+julia> bset = BasisSet("sto-3g", "H 0 0 0");
+julia> atomic_orbital_amplitude(bset, 1, [0.0,0.0,0.0])
+0.6282468778403579
+julia> atomic_orbital_amplitude(bset, 1, [0.1;0.2;0.3;;-0.1;0.3;-0.2])
+2-element Vector{Float64}:
+ 0.49840190793869554
+ 0.49840190793869554
+```
