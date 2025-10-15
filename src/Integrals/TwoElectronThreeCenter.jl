@@ -1,4 +1,4 @@
-const _ghostBF = CartesianShell(0, SVector(1.0), SVector(0.0), Atom(1, 1.0, [0.0, 0.0, 0.0]))
+const _ghostBF = CartesianShell(0, [1.0], [0.0], Atom(1, 1.0, [0.0, 0.0, 0.0]))
 
 function ERI_2e3c!(out, BS::BasisSet{LCint}, i, j, k)
     cint3c2e_sph!(out, [i,j,k], BS.lib)
