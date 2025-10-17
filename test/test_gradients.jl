@@ -39,7 +39,7 @@ H   -2.488220057000    3.155340844300    0.512081313000""")
 bs = BasisSet("cc-pvdz", atoms)
 
 @testset "∂S/∂X" begin
-    for iA = 1:5
+    for iA = 1:length(atoms)
         dS = ∇overlap(bs, iA)
         for k = 1:3
             @test dS[:,:,k] ≈ ∇FD_overlap(bs, iA, k)
@@ -48,7 +48,7 @@ bs = BasisSet("cc-pvdz", atoms)
 end
 
 @testset "∂T/∂X" begin
-    for iA = 1:5
+    for iA = 1:length(atoms)
         dT = ∇kinetic(bs, iA)
         for k = 1:3
             @test dT[:,:,k] ≈ ∇FD_kinetic(bs, iA, k)
@@ -57,7 +57,7 @@ end
 end
 
 @testset "∂V/∂X" begin
-    for iA = 1:5
+    for iA = 1:length(atoms)
         dV = ∇nuclear(bs, iA)
         for k = 1:3
             @test dV[:,:,k] ≈ ∇FD_nuclear(bs, iA, k)
@@ -67,7 +67,7 @@ end
 
 @testset "∂[ij|kl]/∂X" begin
     @testset "Dense" begin
-        for iA = 1:5
+        for iA = 1:length(atoms)
             dERI = ∇ERI_2e4c(bs, iA)
             for k = 1:3
                 @test dERI[:,:,:,:,k] ≈ ∇FD_ERI_2e4c(bs, iA, k)
@@ -76,7 +76,7 @@ end
     end
 
     @testset "Sparse" begin
-        for iA = 1:5
+        for iA = 1:length(atoms)
             sparse = ∇sparseERI_2e4c(bs, iA)
             dense = ∇ERI_2e4c(bs, iA)
             @test SinD(sparse, dense) 
