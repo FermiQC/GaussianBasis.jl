@@ -110,13 +110,13 @@ function BasisSet(name::String, str_atoms::String; spherical=true::Bool, lib=:li
     return build_basis_from_file(Val(spherical), name, atoms, lib)
 end
 
-@inline build_basis_from_file(::Val{true}, name::String, atoms::Vector{A}, lib::Symbol) where {A<:Atom} =
+build_basis_from_file(::Val{true}, name::String, atoms::Vector{A}, lib::Symbol) where {A<:Atom} =
     construct_basis_from_library(SphericalShell, name, atoms, Val(lib))
 
-@inline build_basis_from_file(::Val{false}, name::String, atoms::Vector{A}, lib::Symbol) where {A<:Atom} =
+build_basis_from_file(::Val{false}, name::String, atoms::Vector{A}, lib::Symbol) where {A<:Atom} =
     construct_basis_from_library(CartesianShell, name, atoms, Val(lib))
 
-@inline function construct_basis_from_library(::Type{B}, name::String, atoms::Vector{A}, ::Val{:libcint}) where {B<:BasisFunction,A<:Atom}
+function construct_basis_from_library(::Type{B}, name::String, atoms::Vector{A}, ::Val{:libcint}) where {B<:BasisFunction,A<:Atom}
     basis = B[]
     for atom in atoms
         append!(basis, read_basisset(B, name, atom))
@@ -124,7 +124,7 @@ end
     BasisSet(name, atoms, basis, LCint(atoms, basis))
 end
 
-@inline function construct_basis_from_library(::Type{B}, name::String, atoms::Vector{A}, ::Val{:acsint}) where {B<:BasisFunction,A<:Atom}
+function construct_basis_from_library(::Type{B}, name::String, atoms::Vector{A}, ::Val{:acsint}) where {B<:BasisFunction,A<:Atom}
     basis = B[]
     for atom in atoms
         append!(basis, read_basisset(B, name, atom))
@@ -162,7 +162,7 @@ end
 BasisSet(name::String, atoms::Vector{A}, basis::Vector{B}) where {A<:Atom,B<:BasisFunction} =
     BasisSet(name, atoms, basis, LCint(atoms, basis))
 
-@inline BasisSet(name::String, atoms::Vector{A}; spherical::Bool=true, lib::Symbol=:libcint) where {A<:Atom} =
+BasisSet(name::String, atoms::Vector{A}; spherical::Bool=true, lib::Symbol=:libcint) where {A<:Atom} =
     build_basis_from_file(Val(spherical), name, atoms, lib)
 
 function normalize_shell!(::Type{SphericalShell}, coef, exp, n)
