@@ -77,7 +77,7 @@ H: 1s
 H: 1s 1p
 ```
 """
-struct BasisSet{L<:IntLib, A<:Atom, B<:BasisFunction} 
+struct BasisSet{L<:IntLib,A<:Atom,B<:BasisFunction}
     name::String
     atoms::Vector{A}
     basis::Vector{B}
@@ -87,25 +87,56 @@ struct BasisSet{L<:IntLib, A<:Atom, B<:BasisFunction}
     nbas::Int
     nshells::Int
     lib::L
-end
 
-function BasisSet(name::String, str_atoms::String; spherical=true, lib=:libcint)
-    atoms = Molecules.parse_string(str_atoms)
-    BasisSet(name, atoms, spherical=spherical, lib=lib)
-end
-
-function BasisSet(name::String, atoms::Vector{<:Atom}; spherical=true, lib=:libcint)
-
-    basis = spherical ? SphericalShell[] : CartesianShell[]
-
-    for i in eachindex(atoms)
-        bfs = read_basisset(name, atoms[i]; spherical=spherical)
-        push!(basis, bfs...)
+    function BasisSet(
+        name::String,
+        atoms::Vector{A},
+        basis::Vector{B},
+        basis_per_atom::Vector{Int},
+        shells_per_atom::Vector{Int},
+        natoms::Int,
+        nbas::Int,
+        nshells::Int,
+        lib::L
+    ) where {L<:IntLib,A<:Atom,B<:BasisFunction}
+        new{L,A,B}(name, atoms, basis, basis_per_atom, shells_per_atom, natoms, nbas, nshells, lib)
     end
-    BasisSet(name, atoms, basis, lib=lib)
+
 end
 
-function BasisSet(name::String, atoms::Vector{<:Atom}, basis::Vector{<:BasisFunction}; lib=:libcint)
+
+function BasisSet(name::String, str_atoms::String; spherical=true::Bool, lib=:libcint::Symbol)
+    atoms = Molecules.parse_string(str_atoms)
+    return build_basis_from_file(Val(spherical), name, atoms, lib)
+end
+
+@inline build_basis_from_file(::Val{true}, name::String, atoms::Vector{A}, lib::Symbol) where {A<:Atom} =
+    construct_basis_from_library(SphericalShell, name, atoms, Val(lib))
+
+@inline build_basis_from_file(::Val{false}, name::String, atoms::Vector{A}, lib::Symbol) where {A<:Atom} =
+    construct_basis_from_library(CartesianShell, name, atoms, Val(lib))
+
+@inline function construct_basis_from_library(::Type{B}, name::String, atoms::Vector{A}, ::Val{:libcint}) where {B<:BasisFunction,A<:Atom}
+    basis = B[]
+    for atom in atoms
+        append!(basis, read_basisset(B, name, atom))
+    end
+    BasisSet(name, atoms, basis, LCint(atoms, basis))
+end
+
+@inline function construct_basis_from_library(::Type{B}, name::String, atoms::Vector{A}, ::Val{:acsint}) where {B<:BasisFunction,A<:Atom}
+    basis = B[]
+    for atom in atoms
+        append!(basis, read_basisset(B, name, atom))
+    end
+    BasisSet(name, atoms, basis, ACSint())
+end
+
+construct_basis_from_library(::Type{B}, name::String, atoms::Vector{A}, lib::Val) where {B<:BasisFunction,A<:Atom} =
+    throw(ArgumentError("Unknown integral library: $lib"))
+
+
+function BasisSet(name::String, atoms::Vector{A}, basis::Vector{B}, lib::L) where {A<:Atom,B<:BasisFunction,L<:IntLib}
 
     natm = length(atoms)
 
@@ -118,26 +149,23 @@ function BasisSet(name::String, atoms::Vector{<:Atom}, basis::Vector{<:BasisFunc
     for a in 1:natm
         for b in basis
             if atoms[a] == b.atom
-                spa[a] += 1 
-                bpa[a] += num_basis(b) 
+                spa[a] += 1
+                bpa[a] += num_basis(b)
             end
         end
     end
     nbas = sum(bpa)
 
-    if lib == :acsint
-
-        return BasisSet(name, atoms, basis, bpa, spa, natm, nbas, nshells, ACSint())
-
-    elseif lib == :libcint
-
-        return BasisSet(name, atoms, basis, bpa, spa, natm, nbas, nshells, LCint(atoms, basis))
-    else
-        throw(ArgumentError("invalid integral backend option: $(lib)"))
-    end
+    BasisSet(name, atoms, basis, bpa, spa, natm, nbas, nshells, lib)
 end
 
-function normalize_spherical!(coef, exp, n)
+BasisSet(name::String, atoms::Vector{A}, basis::Vector{B}) where {A<:Atom,B<:BasisFunction} =
+    BasisSet(name, atoms, basis, LCint(atoms, basis))
+
+@inline BasisSet(name::String, atoms::Vector{A}; spherical::Bool=true, lib::Symbol=:libcint) where {A<:Atom} =
+    build_basis_from_file(Val(spherical), name, atoms, lib)
+
+function normalize_shell!(::Type{SphericalShell}, coef, exp, n)
     for i = eachindex(coef)
         a = exp[i]
         # normalization factor of function rⁿ exp(-ar²)
@@ -146,7 +174,7 @@ function normalize_spherical!(coef, exp, n)
     end
 end
 
-function normalize_cartesian!(coef, exp, l)
+function normalize_shell!(::Type{CartesianShell}, coef, exp, l)
     df = (π^1.5) * (l == 0 ? 1 : doublefactorial(2 * l - 1))
 
     # Normalize primitives
