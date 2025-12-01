@@ -11,6 +11,7 @@ using GaussianBasis: BasisSet, LCint
 export cint1e_kin_sph!, cint1e_nuc_sph!, cint1e_ovlp_sph!, cint2c2e_sph!, cint2e_sph!, cint3c2e_sph!
 export cint1e_ipkin_sph!, cint1e_ipnuc_sph!, cint1e_ipovlp_sph!, cint1e_ipipovlp_sph!, cint2e_ip1_sph!, cint1e_r_sph!
 export cint1e_r_sph!, cint1e_rr_sph!, cint1e_rrr_sph!, cint1e_rrrr_sph!
+export cint3c2e_ip2_sph!, cint3c2e_ip1_sph!, cint2c2e_ip1_sph!
 
 using libcint_jll
 const LIBCINT = libcint
@@ -191,6 +192,57 @@ function cint2e_ip1_sph!(buf, shls, atm, natm, bas, nbas, env)
 end
 function cint2e_ip1_sph!(buf::Array{Cdouble}, shls::AbstractArray{<:Integer}, lib::LCint)
     cint2e_ip1_sph!(buf, Cint.(shls.-1), lib.atm, lib.natm, lib.bas, lib.nbas, lib.env)
+end
+
+function cint2c2e_ip1_sph!(buf, shls, atm, natm, bas, nbas, env)
+    opt = Ptr{UInt8}(C_NULL)
+    @ccall LIBCINT.cint2c2e_ip1_sph(
+                                    buf  :: Ptr{Cdouble},
+                                    shls :: Ptr{Cint},
+                                    atm  :: Ptr{Cint},
+                                    natm :: Cint,
+                                    bas  :: Ptr{Cint},
+                                    nbas :: Cint,
+                                    env  :: Ptr{Cdouble},
+                                    opt :: Ptr{UInt8},
+                                )::Cvoid
+end
+function cint2c2e_ip1_sph!(buf::Array{Cdouble}, shls::AbstractArray{<:Integer}, lib::LCint)
+    cint2c2e_ip1_sph!(buf, Cint.(shls.-1), lib.atm, lib.natm, lib.bas, lib.nbas, lib.env)
+end
+
+function cint3c2e_ip1_sph!(buf, shls, atm, natm, bas, nbas, env)
+    opt = Ptr{UInt8}(C_NULL)
+    @ccall LIBCINT.cint3c2e_ip1_sph(
+                                    buf  :: Ptr{Cdouble},
+                                    shls :: Ptr{Cint},
+                                    atm  :: Ptr{Cint},
+                                    natm :: Cint,
+                                    bas  :: Ptr{Cint},
+                                    nbas :: Cint,
+                                    env  :: Ptr{Cdouble},
+                                    opt :: Ptr{UInt8},
+                                )::Cvoid
+end
+function cint3c2e_ip1_sph!(buf::Array{Cdouble}, shls::AbstractArray{<:Integer}, lib::LCint)
+    cint3c2e_ip1_sph!(buf, Cint.(shls.-1), lib.atm, lib.natm, lib.bas, lib.nbas, lib.env)
+end
+
+function cint3c2e_ip2_sph!(buf, shls, atm, natm, bas, nbas, env)
+    opt = Ptr{UInt8}(C_NULL)
+    @ccall LIBCINT.cint3c2e_ip2_sph(
+                                    buf  :: Ptr{Cdouble},
+                                    shls :: Ptr{Cint},
+                                    atm  :: Ptr{Cint},
+                                    natm :: Cint,
+                                    bas  :: Ptr{Cint},
+                                    nbas :: Cint,
+                                    env  :: Ptr{Cdouble},
+                                    opt :: Ptr{UInt8},
+                                )::Cvoid
+end
+function cint3c2e_ip2_sph!(buf::Array{Cdouble}, shls::AbstractArray{<:Integer}, lib::LCint)
+    cint3c2e_ip2_sph!(buf, Cint.(shls.-1), lib.atm, lib.natm, lib.bas, lib.nbas, lib.env)
 end
 
 function cint1e_r_sph!(buf, shls, atm, natm, bas, nbas, env)
