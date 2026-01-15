@@ -83,3 +83,23 @@ end
         end
     end
 end
+
+aux = BasisSet("def2-universal-jkfit", atoms)
+
+@testset "∂[ij|k]/∂X" begin
+    for iA = 1:5
+        dERI = ∇ERI_2e3c(bs, aux, iA)
+        for k = 1:3
+            @test dERI[:,:,:,k] ≈ ∇FD_ERI_2e3c(bs, aux, iA, k)
+        end
+    end
+end
+
+@testset "∂[i|j]/∂X" begin
+    for iA = 1:5
+        dERI = ∇ERI_2e2c(aux, iA)
+        for k = 1:3
+            @test dERI[:,:,k] ≈ ∇FD_ERI_2e2c(aux, iA, k)
+        end
+    end
+end
