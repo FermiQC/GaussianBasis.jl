@@ -13,23 +13,20 @@ const AMDict = Dict(
     )
 
 """
-    GaussinBasis.read_basisset(bname::String, atom::atom; spherical=true)
+    read_basisset(::Type{B}, bname::String, atom::A) where {A<:Atom,B<:BasisFunction}
 
 Returns an array of BasisFunction objects for the given `Atom` and basis set name (bname).
 By default, functions are normalized as Spherical functions (spherical=true). If spherical is set to false,
 Cartesian functions are returned instead. 
 """
-function read_basisset(bname::String, atom::A; spherical=true) where A <: Atom
-
-    AtomSymbol = Molecules.symbol(atom) 
+function read_basisset(::Type{B}, bname::String, atom::A) where {A<:Atom,B<:BasisFunction}
+    AtomSymbol = Molecules.symbol(atom)
 
     # Transform basis name to file name e.g. 6-31g* => 6-31g_st_
     clean_bname = replace(lowercase(bname), "*"=>"_st_")
     file_path = joinpath(LIBPATH, clean_bname*".gbs")
 
-    if !(isfile(file_path))
-        throw(ArgumentError("Basis set file for $bname was not found."))
-    end
+    isfile(file_path) || throw(ArgumentError("Basis set file for $bname was not found."))
 
     # Fetch the block of the basis set file regarding the given atom 
     info = extract_atom_from_bs(file_path, AtomSymbol)
@@ -45,20 +42,39 @@ function read_basisset(bname::String, atom::A; spherical=true) where A <: Atom
     end
 
     # Parse each string into a basis function object
-    out = BasisFunction[]
-    for b in BasisStrings
-        r = r"[SPDFGHI]{2}"
-        if occursin(r, b)
-            bf1, bf2 = two_basis_from_string(b, atom, spherical=spherical)
-            push!(out, bf1)
-            push!(out, bf2)
-        else
-            bf = basis_from_string(b, atom, spherical=spherical)
-            push!(out, bf)
-        end
+    # Create properly typed output vector after parsing first shell
+    first_shell = parse_basis_string(B, BasisStrings[1], atom)
+
+    if length(BasisStrings) == 1
+        return first_shell
+    end
+
+    # Initialize with concrete type from first shell
+    out = typeof(first_shell)()
+    append!(out, first_shell)
+
+    for b in BasisStrings[2:end]
+        append!(out, parse_basis_string(B, b, atom))
     end
 
     return out
+end
+
+"""
+    parse_basis_string(::Type{B}, bstring::String, atom::A) where {A<:Atom,B<:BasisFunction}
+
+Parse a single basis string and return either one shell or two shells (for SP-type blocks).
+Returns a vector that may contain 1 or 2 shells.
+"""
+function parse_basis_string(::Type{B}, bstring::String, atom::A) where {A<:Atom,B<:BasisFunction}
+    r = r"[SPDFGHI]{2}"
+    if occursin(r, bstring)
+        bf1, bf2 = two_basis_from_string(B, bstring, atom)
+        return [bf1, bf2]
+    else
+        bf = basis_from_string(B, bstring, atom)
+        return [bf]
+    end
 end
 
 """
@@ -97,13 +113,12 @@ function extract_atom_from_bs(file_path::String, AtomSymbol::String)
 end
 
 """
-    GaussinBasis.basis_from_string(bstring::String, atom::A; spherical=true) where A <: Atom
-
+    GaussianBasis.basis_from_string(::Type{B}, bstring::String, atom::A) where {A<:Atom,B<:BasisFunction}
 From a String block representing two Basis Function (e.g. SP blocks) in gbs format, returns a
 `BasisFunction` object. For the special case of two basis being described within the 
 same block (e.g. SP blocks) see `two_basis_from_string`
 """
-function basis_from_string(bstring::String, atom::A; spherical=true) where A <: Atom
+function basis_from_string(::Type{B}, bstring::String, atom::A) where {A<:Atom,B<:BasisFunction}
     lines = split(strip(bstring), "\n")
     head = lines[1]
     m = match(AM_pat, head)
@@ -131,22 +146,17 @@ function basis_from_string(bstring::String, atom::A; spherical=true) where A <: 
         exp[i] = parse(Float64, e)
     end
 
-    if spherical
-        normalize_spherical!(coef, exp, l)
-        return SphericalShell(l, coef, exp, atom)
-    else
-        normalize_cartesian!(coef, exp, l)
-        return CartesianShell(l, coef, exp, atom)
-    end
+    normalize_shell!(B, coef, exp, l)
+    B(l, coef, exp, atom)
 end
 
 """
-    GaussinBasis.two_basis_from_string(bstring::String, atom::A; spherical=true) where A <: Atom
+    GaussianBasis.two_basis_from_string(::Type{B}, bstring::String, atom::A) where {A<:Atom,B<:BasisFunction}
 
 From a String block representing two Basis Function (e.g. SP blocks) in gbs format, returns a
 `BasisFunction` object. For the case of a single basis being described within the block see `basis_from_string`
 """
-function two_basis_from_string(bstring::String, atom::A; spherical=true) where A <: Atom
+function two_basis_from_string(::Type{B}, bstring::String, atom::A) where {A<:Atom,B<:BasisFunction}
     lines = split(strip(bstring), "\n")
     head = lines[1]
     m = match(AM_pat, head)
@@ -180,13 +190,7 @@ function two_basis_from_string(bstring::String, atom::A; spherical=true) where A
         exp[i] = parse(Float64, e)
     end
 
-    if spherical
-        normalize_spherical!(coef1, exp, l1)
-        normalize_spherical!(coef2, exp, l2)
-        return SphericalShell(l1, coef1, exp, atom), SphericalShell(l2, coef2, exp, atom)
-    else
-        normalize_cartesian!(coef1, exp, l1)
-        normalize_cartesian!(coef2, exp, l2)
-        return CartesianShell(l1, coef1, exp, atom), CartesianShell(l2, coef2, exp, atom)
-    end
+    normalize_shell!(B, coef1, exp, l1)
+    normalize_shell!(B, coef2, exp, l2)
+    B(l1, coef1, exp, atom), B(l2, coef2, exp, atom)
 end
