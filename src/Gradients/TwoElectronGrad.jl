@@ -319,3 +319,209 @@ function ∇sparseERI_2e4c(BS::BasisSet, iA)
     end #sync
     return indexes[mask], ∇x[mask], ∇y[mask], ∇z[mask]
 end
+
+function ∇ERI_2e3c(BS1::BasisSet, BS2::BasisSet, iA)
+    # Pre allocate output
+    out = zeros(BS1.nbas, BS1.nbas, BS2.nbas, 3)
+    return ∇ERI_2e3c!(out, BS1, BS2, iA)
+end
+
+function ∇ERI_2e3c!(out, BS1::BasisSet, BS2::BasisSet, iA)
+
+    atoms = unique(vcat(BS1.atoms, BS2.atoms))
+    basis = vcat(BS1.basis, BS2.basis)
+
+    Bmerged = BasisSet("$(BS1.name*BS2.name)", atoms, basis)
+
+    if size(out) != (BS1.nbas, BS1.nbas, BS2.nbas, 3)
+        throw(DimensionMismatch("Size of the output array needs to be (N1, N1, N2, 3)."))
+    end
+
+    A = BS1.atoms[iA]
+
+    # Shell indexes for basis 1 in the atom A
+    Ashells1 = Int[]
+    notAshells1 = Int[]
+    for i in 1:BS1.nshells
+        b = BS1.basis[i]
+        if b.atom == A
+            push!(Ashells1, i)
+        else
+            push!(notAshells1, i)
+        end
+    end
+
+    # Shell indexes for basis 2 in the atom A
+    Ashells2 = Int[]
+    notAshells2 = Int[]
+    for i in 1:BS2.nshells
+        b = BS2.basis[i]
+        if b.atom == A
+            push!(Ashells2, i)
+        else
+            push!(notAshells2, i)
+        end
+    end
+
+    Nvals1 = num_basis.(BS1.basis)
+    ao_offset1 = [sum(Nvals1[1:(i-1)]) for i = 1:BS1.nshells]
+    Nmax1 = maximum(Nvals1)
+
+    Nvals2 = num_basis.(BS2.basis)
+    ao_offset2 = [sum(Nvals2[1:(i-1)]) for i = 1:BS2.nshells]
+    Nmax2 = maximum(Nvals2)
+
+    buf = zeros(Cdouble, 3*Nmax1^2*Nmax2)
+
+    for i = 1:BS1.nshells
+        for j = i:BS1.nshells # i <= j
+            for k = 1:BS2.nshells
+
+                x_in_A = [i in Ashells1, j in Ashells1, k in Ashells2]
+
+                # If no basis is centered on A, skip
+                # If all basis are centered on A, skip
+                if !any(x_in_A) || all(x_in_A)
+                    continue
+                end
+
+                Ni = Nvals1[i]
+                Nj = Nvals1[j]
+                Nk = Nvals2[k]
+                Nijk = Ni*Nj*Nk
+
+                ioff = ao_offset1[i]
+                joff = ao_offset1[j]
+                koff = ao_offset2[k]
+
+                I = (ioff+1):(ioff+Ni)
+                J = (joff+1):(joff+Nj)
+                K = (koff+1):(koff+Nk)
+
+	        # [i'j|k]
+                if x_in_A[1]
+                    cint3c2e_ip1_sph!(buf, [i,j,k+BS1.nshells], Bmerged.lib)
+                    for q in 1:3
+                        r = (1+Nijk*(q-1)):(q*Nijk)
+                        ∇q = reshape(buf[r], Int(Ni), Int(Nj), Int(Nk))
+                        out[I,J,K,q] += -∇q
+                    end
+                end
+
+                # [ij'|k]
+                if x_in_A[2]
+                    cint3c2e_ip1_sph!(buf, [j,i,k+BS1.nshells], Bmerged.lib)
+                    for q in 1:3
+                        r = (1+Nijk*(q-1)):(q*Nijk)
+                        ∇q = reshape(buf[r], Int(Nj), Int(Ni), Int(Nk))
+                        out[I,J,K,q] += -permutedims(∇q, (2,1,3))
+                    end
+                end
+
+                # [ij|k']
+                if x_in_A[3]
+                    cint3c2e_ip2_sph!(buf, [i,j,k+BS1.nshells], Bmerged.lib)
+                    for q in 1:3
+                        r = (1+Nijk*(q-1)):(q*Nijk)
+                        ∇q = reshape(buf[r], Int(Ni), Int(Nj), Int(Nk))
+                        out[I,J,K,q] += -∇q
+                    end
+                end
+
+                if i != j
+                    for q in 1:3
+                        # i,j permutation
+                        out[J, I, K, q] .= permutedims(out[I, J, K, q], (2,1,3))
+                    end
+                end
+            end
+        end
+    end
+
+    return out
+end
+
+function ∇ERI_2e2c(BS::BasisSet, iA)
+    # Pre allocate output
+    out = zeros(BS.nbas, BS.nbas, 3)
+    return ∇ERI_2e2c!(out, BS, iA)
+end
+
+function ∇ERI_2e2c!(out, BS::BasisSet, iA)
+
+    if size(out) != (BS.nbas, BS.nbas, 3)
+        throw(DimensionMismatch("Size of the output array needs to be (N, N, 3)."))
+    end
+
+    A = BS.atoms[iA]
+
+    # Shell indexes for basis in the atom A
+    Ashells = Int[]
+    notAshells = Int[]
+    for i in 1:BS.nshells
+        b = BS.basis[i]
+        if b.atom == A
+            push!(Ashells, i)
+        else
+            push!(notAshells, i)
+        end
+    end
+
+    Nvals = num_basis.(BS.basis)
+    ao_offset = [sum(Nvals[1:(i-1)]) for i = 1:BS.nshells]
+    Nmax = maximum(Nvals)
+
+    buf = zeros(Cdouble, 3*Nmax^2)
+
+    for i = 1:BS.nshells
+        for j = i:BS.nshells # i <= j
+
+            x_in_A = [x in Ashells for x = (i,j)]
+
+            # If no basis is centered on A, skip
+            # If all basis are centered on A, skip
+            if !any(x_in_A) || all(x_in_A)
+                continue
+            end
+
+            Ni = Nvals[i]
+            Nj = Nvals[j]
+            Nij = Ni*Nj
+
+            ioff = ao_offset[i]
+            joff = ao_offset[j]
+
+            I = (ioff+1):(ioff+Ni)
+            J = (joff+1):(joff+Nj)
+
+            # [i'|j]
+            if x_in_A[1]
+                cint2c2e_ip1_sph!(buf, [i,j], BS.lib)
+                for q in 1:3
+                    r = (1+Nij*(q-1)):(q*Nij)
+                    ∇q = reshape(buf[r], Int(Ni), Int(Nj))
+                    out[I,J,q] += -∇q
+                end
+            end
+
+            # [i|j']
+            if x_in_A[2]
+                cint2c2e_ip1_sph!(buf, [j,i], BS.lib)
+                for q in 1:3
+                    r = (1+Nij*(q-1)):(q*Nij)
+                    ∇q = reshape(buf[r], Int(Nj), Int(Ni))
+                    out[I,J,q] += -permutedims(∇q, (2,1))
+                end
+            end
+
+            if i != j
+                for q in 1:3
+                    # i,j permutation
+                    out[J, I, q] .= permutedims(out[I, J, q], (2,1))
+                end
+            end
+        end
+    end
+
+    return out
+end
