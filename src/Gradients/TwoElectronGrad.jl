@@ -29,7 +29,6 @@ function ∇ERI_2e4c!(out, BS::BasisSet, iA)
     Nmax = maximum(Nvals)
     #buf_arrays = [zeros(Cdouble, 3*Nmax^4) for _ = 1:Threads.nthreads()]
 
-    buf = zeros(Cdouble, 3*Nmax^4)
 
     # Find unique (i,j,k,l) combinations given permutational symmetry
     unique_idx = Tuple{Int, Int, Int, Int}[]
@@ -46,14 +45,14 @@ function ∇ERI_2e4c!(out, BS::BasisSet, iA)
         end
     end
 
-    for (i,j,k,l) in unique_idx
-
-        x_in_A = [x in Ashells for x = (i,j,k,l)]
+    allocate(body) = body(zeros(Cdouble, 3*Nmax^4))
+    workerpool(allocate, unique_idx; chunksize=10) do (i,j,k,l), buf
+        x_in_A = map(in(Ashells), (i,j,k,l))
 
         # If no basis is centered on A, skip
         # If all basis are centered on A, skip
         if !any(x_in_A) || all(x_in_A)
-            continue
+            return
         end
 
         Ni = Nvals[i]
@@ -74,91 +73,81 @@ function ∇ERI_2e4c!(out, BS::BasisSet, iA)
 
         # [i'j|kl]
         if x_in_A[1]
-            cint2e_ip1_sph!(buf, [i,j,k,l], BS.lib)
+            cint2e_ip1_sph!(buf, @SVector([i,j,k,l]), BS.lib)
+            ∇q = reshape(view(buf, 1:3*Nijkl), Ni, Nj, Nk, Nl, 3)
             for q in 1:3
-                r = (1+Nijkl*(q-1)):(q*Nijkl)
-                ∇q = reshape(buf[r], Int(Ni), Int(Nj), Int(Nk), Int(Nl))
-                out[I,J,K,L,q] += -∇q
+                @inbounds for (rl, nl) in enumerate(L), (rk, nk) in enumerate(K), (rj, nj) in enumerate(J), (ri, ni) in enumerate(I)
+                    out[ni, nj, nk, nl, q] -= ∇q[ri, rj, rk, rl, q]
+                end
             end
         end
 
         # [ij'|kl]
         if x_in_A[2]
-            cint2e_ip1_sph!(buf, [j,i,k,l], BS.lib)
+            cint2e_ip1_sph!(buf, @SVector([j,i,k,l]), BS.lib)
+            ∇q = reshape(view(buf, 1:3*Nijkl), Nj, Ni, Nk, Nl, 3)
             for q in 1:3
-                r = (1+Nijkl*(q-1)):(q*Nijkl)
-                ∇q = reshape(buf[r], Int(Nj), Int(Ni), Int(Nk), Int(Nl))
-                out[I,J,K,L,q] += -permutedims(∇q, (2,1,3,4))
+                @inbounds for (rl, nl) in enumerate(L), (rk, nk) in enumerate(K), (rj, nj) in enumerate(J), (ri, ni) in enumerate(I)
+                    out[ni, nj, nk, nl, q] -= ∇q[rj, ri, rk, rl, q]
+                end
             end
         end
 
         # [ij|k'l]
         if x_in_A[3]
-            cint2e_ip1_sph!(buf, [k,l,i,j], BS.lib)
+            cint2e_ip1_sph!(buf, @SVector([k,l,i,j]), BS.lib)
+            ∇q = reshape(view(buf, 1:3*Nijkl), Nk, Nl, Ni, Nj, 3)
             for q in 1:3
-                r = (1+Nijkl*(q-1)):(q*Nijkl)
-                ∇q = reshape(buf[r], Int(Nk), Int(Nl), Int(Ni), Int(Nj))
-                out[I,J,K,L,q] += -permutedims(∇q, (3,4,1,2))
+                @inbounds for (rl, nl) in enumerate(L), (rk, nk) in enumerate(K), (rj, nj) in enumerate(J), (ri, ni) in enumerate(I)
+                    out[ni, nj, nk, nl, q] -= ∇q[rk, rl, ri, rj, q]
+                end
             end
         end
 
         # [ij|kl']
         if x_in_A[4]
-            cint2e_ip1_sph!(buf, [l,k,i,j], BS.lib)
+            cint2e_ip1_sph!(buf, @SVector([l,k,i,j]), BS.lib)
+            ∇q = reshape(view(buf, 1:3*Nijkl), Nl, Nk, Ni, Nj, 3)
             for q in 1:3
-                r = (1+Nijkl*(q-1)):(q*Nijkl)
-                ∇q = reshape(buf[r], Int(Nl), Int(Nk), Int(Ni), Int(Nj))
-                out[I,J,K,L,q] += -permutedims(∇q, (3,4,2,1))
+                @inbounds for (rl, nl) in enumerate(L), (rk, nk) in enumerate(K), (rj, nj) in enumerate(J), (ri, ni) in enumerate(I)
+                    out[ni, nj, nk, nl, q] -= ∇q[rl, rk, ri, rj, q]
+                end
             end
         end
 
         for q in 1:3
             if i != j && k != l && index2(i,j) != index2(k,l)
-                # i,j permutation
-                out[J, I, K, L, q] .= permutedims(out[I, J, K, L, q], (2,1,3,4))
-                # k,l permutation
-                out[I, J, L, K, q] .= permutedims(out[I, J, K, L, q], (1,2,4,3))
-
-                # i,j + k,l permutatiom
-                out[J, I, L, K, q] .= permutedims(out[I, J, K, L, q], (2,1,4,3))
-
-                # ij, kl permutation
-                out[K, L, I, J, q] .= permutedims(out[I, J, K, L, q], (3,4,1,2))
-                # ij, kl + k,l permutation
-                out[L, K, I, J, q] .= permutedims(out[I, J, K, L, q], (4,3,1,2))
-                # ij, kl + i,j permutation
-                out[K, L, J, I, q] .= permutedims(out[I, J, K, L, q], (3,4,2,1))
-                # ij, kl + i,j + k,l permutation
-                out[L, K, J, I, q] .= permutedims(out[I, J, K, L, q], (4,3,2,1))
-
+                @inbounds for nl = L, nk = K, nj = J, ni = I
+                    out[nj, ni, nk, nl, q] = out[ni, nj, nk, nl, q]
+                    out[ni, nj, nl, nk, q] = out[ni, nj, nk, nl, q]
+                    out[nj, ni, nl, nk, q] = out[ni, nj, nk, nl, q]
+                    out[nk, nl, ni, nj, q] = out[ni, nj, nk, nl, q]
+                    out[nl, nk, ni, nj, q] = out[ni, nj, nk, nl, q]
+                    out[nk, nl, nj, ni, q] = out[ni, nj, nk, nl, q]
+                    out[nl, nk, nj, ni, q] = out[ni, nj, nk, nl, q]
+                end
             elseif k != l && index2(i,j) != index2(k,l)
-                # k,l permutation
-                out[I, J, L, K, q] .= permutedims(out[I, J, K, L, q], (1,2,4,3))
-                # ij, kl permutation
-                out[K, L, I, J, q] .= permutedims(out[I, J, K, L, q], (3,4,1,2))
-                # ij, kl + k,l permutation
-                out[L, K, I, J, q] .= permutedims(out[I, J, K, L, q], (4,3,1,2))
-
+                @inbounds for nl = L, nk = K, nj = J, ni = I
+                    out[ni, nj, nl, nk, q] = out[ni, nj, nk, nl, q]
+                    out[nk, nl, ni, nj, q] = out[ni, nj, nk, nl, q]
+                    out[nl, nk, ni, nj, q] = out[ni, nj, nk, nl, q]
+                end
             elseif i != j && index2(i,j) != index2(k,l)
-                # i,j permutation
-                out[J, I, K, L, q] .= permutedims(out[I, J, K, L, q], (2,1,3,4))
-
-                # ij, kl permutation
-                out[K, L, I, J, q] .= permutedims(out[I, J, K, L, q], (3,4,1,2))
-                # ij, kl + i,j permutation
-                out[K, L, J, I, q] .= permutedims(out[I, J, K, L, q], (3,4,2,1))
-        
+                @inbounds for nl = L, nk = K, nj = J, ni = I
+                    out[nj, ni, nk, nl, q] = out[ni, nj, nk, nl, q]
+                    out[nk, nl, ni, nj, q] = out[ni, nj, nk, nl, q]
+                    out[nk, nl, nj, ni, q] = out[ni, nj, nk, nl, q]
+                end
             elseif i != j && k != l 
-                # i,j permutation
-                out[J, I, K, L, q] .= permutedims(out[I, J, K, L, q], (2,1,3,4))
-                # k,l permutation
-                out[I, J, L, K, q] .= permutedims(out[I, J, K, L, q], (1,2,4,3))
-
-                # i,j + k,l permutatiom
-                out[J, I, L, K, q] .= permutedims(out[I, J, K, L, q], (2,1,4,3))
+                @inbounds for nl = L, nk = K, nj = J, ni = I
+                    out[nj, ni, nk, nl, q] = out[ni, nj, nk, nl, q]
+                    out[ni, nj, nl, nk, q] = out[ni, nj, nk, nl, q]
+                    out[nj, ni, nl, nk, q] = out[ni, nj, nk, nl, q]
+                end
             elseif index2(i,j) != index2(k,l) 
-                # ij, kl permutation
-                out[K, L, I, J, q] .= permutedims(out[I, J, K, L, q], (3,4,1,2))
+                @inbounds for nl = L, nk = K, nj = J, ni = I
+                    out[nk, nl, ni, nj, q] = out[ni, nj, nk, nl, q]
+                end
             end
         end
     end

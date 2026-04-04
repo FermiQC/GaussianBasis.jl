@@ -55,7 +55,7 @@ function ∇1e!(out, BS::BasisSet, compute::String, iA)
                     r = (1+Nij*(k-1)):(k*Nij)
                     @views ∇k = buf[r]
                     #∇k = buf[r]
-                    out[I,J,k] .-= reshape(∇k, Int(Ni), Int(Nj))
+                    out[I,J,k] .-= reshape(∇k, Ni, Nj)
                 end
 
                 # Copy over the transpose
