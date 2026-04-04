@@ -20,7 +20,7 @@ LinearAlgebra = "1"
 Molecules = "0.3"
 SpecialFunctions = "2"
 StaticArrays = "1.4"
-julia = "^1.6"
+julia = "^1.9"
 libcint_jll = "5, 6"
 
 [extras]
