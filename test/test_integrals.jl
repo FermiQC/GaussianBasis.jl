@@ -35,13 +35,30 @@ end
 
     idx, data = sparseERI_2e4c(bs)
 
-    uniform = zeros(Int16, length(idx)*4)
-    for i in eachindex(idx)
-        uniform[(1+4*(i-1)):(4+4*(i-1))] .= idx[i]
+    # sparseERI_2e4c does not guarantee a particular element order (it depends on
+    # how work is split across tasks), so compare against the reference as a set
+    # of canonicalized (I,J,K,L) => value pairs rather than positionally.
+    function canonical_sparse_dict(idx, data)
+        d = Dict{NTuple{4,Int16}, Float64}()
+        for i in eachindex(idx)
+            I, J, K, L = idx[i]
+            a = I <= J ? (I, J) : (J, I)
+            b = K <= L ? (K, L) : (L, K)
+            key = a <= b ? (a..., b...) : (b..., a...)
+            d[key] = data[i]
+        end
+        return d
     end
 
-    @test uniform ≈ h5read(test_file, "sparseERIidx")
-    @test data ≈ h5read(test_file, "sparseERIdata")
+    ref_uniform = h5read(test_file, "sparseERIidx")
+    ref_data = h5read(test_file, "sparseERIdata")
+    ref_idx = [Tuple(Int16.(ref_uniform[(1+4*(i-1)):(4+4*(i-1))])) for i in eachindex(ref_data)]
+
+    d = canonical_sparse_dict(idx, data)
+    d_ref = canonical_sparse_dict(ref_idx, ref_data)
+
+    @test Set(keys(d)) == Set(keys(d_ref))
+    @test all(isapprox(d[k], d_ref[k]) for k in keys(d_ref))
 end
 
 @testset "Two-Electron Three-Center" begin

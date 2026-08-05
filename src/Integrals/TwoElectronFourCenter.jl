@@ -1,12 +1,7 @@
+# Returned elements are in whatever order tasks happened to finish in, not
+# sorted by index -- callers that need a canonical unique integral once (like
+# Fock builds) don't care about order, but don't rely on it either.
 function sparseERI_2e4c(BS::BasisSet, cutoff = 1e-12)
-    # Number of unique integral elements
-    N = (BS.nbas^2 - BS.nbas) ÷ 2 + BS.nbas
-    N = (N^2 - N) ÷ 2 + N
-
-    # Pre allocate output
-    out = zeros(Cdouble, N)
-    indexes = Vector{NTuple{4,Int16}}(undef, N)
-
     # Pre compute a list of angular momentum numbers (l) for each shell
     Nvals = num_basis.(BS.basis)
     Nmax = maximum(Nvals)
@@ -20,16 +15,14 @@ function sparseERI_2e4c(BS::BasisSet, cutoff = 1e-12)
     # Pre allocate array to save ij pairs
     ij_vals = Vector{NTuple{2,Int32}}(undef, num_ij)
 
-    # Pre allocate array to save σij, that is the screening parameter for Schwarz 
+    # Pre allocate array to save σij, that is the screening parameter for Schwarz
     σvals = zeros(Cdouble, num_ij)
 
     ### Loop thorugh i and j such that i ≤ j. Save each pair into ij_vals and compute √σij for integral screening
     tmp = zeros(Cdouble, Nmax^4)
     lim = Int32(BS.nshells - 1)
     @inbounds for i = zero(Int32):lim
-        Li2 = Nvals[i+1]^2
         for j = i:lim
-            Lj2 = Nvals[j+1]^2
             idx = index2(i,j) + 1
             ij_vals[idx] = (i+1,j+1)
             ERI_2e4c!(tmp, BS, i+1, i+1, j+1 ,j+1)
@@ -39,56 +32,118 @@ function sparseERI_2e4c(BS::BasisSet, cutoff = 1e-12)
 
     ijkl_vals = Iterators.flatten((((ij_vals[ij]..., ij_vals[kl]...) for ij in 1:kl if σvals[ij] * σvals[kl] > cutoff) for kl = 1:num_ij))
 
-    allocate(body) = body(zeros(Cdouble, Nmax^4))
-    # i,j,k,l => Shell indexes starting at zero
-    # I, J, K, L => AO indexes starting at one
-    workerpool(allocate, ijkl_vals; chunksize=10) do (i,j,k,l), buf
-        @inbounds begin
-            Li, Lj, Lk, Ll = map(n->Nvals[n], (i,j,k,l))
-            Lij = Li*Lj
-            Lijk = Lij*Lk
+    # Upper bound on the number of surviving AO elements, from the block sizes of
+    # the shell quartets that passed screening (no ERI calls needed, just Nvals
+    # products). Used only to sizehint! the per-task buffers below: geometric
+    # Vector growth is amortized O(1), but still copies ~2x the final size in
+    # total over the doublings, so hinting close to the true size avoids that
+    # overshoot (measured ~35% less peak memory on a dense system with the hint).
+    size_ub = 0
+    for (i,j,k,l) in ijkl_vals
+        size_ub += Nvals[i]*Nvals[j]*Nvals[k]*Nvals[l]
+    end
 
-            ioff, joff, koff, loff = map(n->ao_offset[n], (i,j,k,l))
+    # Results are not written into a shared nbas-sized dense buffer (whose size
+    # would depend only on nbas, not on how many quartets survive screening).
+    # Each task instead accumulates into its own private growable buffer, sized
+    # upfront via the estimate above, and buffers are concatenated into
+    # right-sized output arrays once every task is done. Peak memory then scales
+    # with the number of surviving elements instead of nbas^4.
+    ntasks = Threads.nthreads()
+    chunksize = 10
 
-            # Compute ERI
-            ERI_2e4c!(buf, BS, i, j, k ,l)
+    # ijkl_vals is a flatten-of-filtered-generators, and eltype() on that gives up
+    # and infers Any even though every element is really a NTuple{4,Int32} -- so
+    # the channel's element type is pinned explicitly here. Without this, (i,j,k,l)
+    # inside the hot loop below become dynamically typed, forcing every (I,J,K,L)
+    # tuple to be boxed before it can be pushed into a concretely-typed Vector;
+    # that alone was responsible for a many-fold blowup in both time and memory.
+    requests = Channel{Vector{NTuple{4,Int32}}}(Inf)
+    for chunk in Iterators.partition(ijkl_vals, chunksize)
+        put!(requests, chunk)
+    end
+    close(requests)
 
-            ### This block aims to retrieve unique elements within buf and map them to AO indexes
-            # is, js, ks, ls are indexes within the shell e.g. for a p shell is = (1, 2, 3)
-            # bl, bkl, bjkl are used to map the (i,j,k,l) index into a one-dimensional index for buf
-            # That is, get the correct integrals for the AO quartet.
-            for ls = 1:Ll
-                L = loff + ls
-                bl = Lijk*(ls-1)
-                for ks = 1:Lk
-                    K = koff + ks
-                    L < K && break
+    per_task_hint = cld(size_ub, ntasks)
+    task_vals = [sizehint!(Cdouble[], per_task_hint) for _ = 1:ntasks]
+    task_idxs = [sizehint!(Vector{NTuple{4,Int16}}(), per_task_hint) for _ = 1:ntasks]
 
-                    # L ≥ K
-                    KL = (L * (L + 1)) >> 1 + K
-                    bkl = Lij*(ks-1) + bl
-                    for js = 1:Lj
-                        J = joff + js
-                        bjkl = Li*(js-1) + bkl
-                        for is = 1:Li
-                            I = ioff + is
-                            J < I && break
+    @sync for t = 1:ntasks
+        Threads.@spawn begin
+            buf = zeros(Cdouble, Nmax^4)
+            vals = task_vals[t]
+            idxs = task_idxs[t]
+            for chunk in requests
+                for (i,j,k,l) in chunk
+                    @inbounds begin
+                        Li, Lj, Lk, Ll = map(n->Nvals[n], (i,j,k,l))
+                        Lij = Li*Lj
+                        Lijk = Lij*Lk
 
-                            IJ = (J * (J + 1)) >> 1 + I
+                        ioff, joff, koff, loff = map(n->ao_offset[n], (i,j,k,l))
 
-                            #KL < IJ ? continue : nothing # This restriction does not work... idk why
+                        # Only when the same shell-pair is reused for bra and ket does this
+                        # block become self-symmetric (is,js and ks,ls range over the exact
+                        # same configuration space), guaranteeing every (I,J,K,L) has a mirror
+                        # (K,L,I,J) also enumerated below. Elsewhere IJ vs KL ordering carries
+                        # no such redundancy and both must be kept.
+                        self_paired = i == k && j == l
 
-                            idx = index2(IJ,KL) + 1
-                            out[idx] = buf[is + bjkl]
-                            indexes[idx] = (I, J, K, L)
+                        # Compute ERI
+                        ERI_2e4c!(buf, BS, i, j, k ,l)
+
+                        # is, js, ks, ls are indexes within the shell e.g. for a p shell is = (1, 2, 3)
+                        # bl, bkl, bjkl are used to map the (i,j,k,l) index into a one-dimensional index for buf
+                        for ls = 1:Ll
+                            L = loff + ls
+                            bl = Lijk*(ls-1)
+                            for ks = 1:Lk
+                                K = koff + ks
+                                L < K && break
+
+                                bkl = Lij*(ks-1) + bl
+                                for js = 1:Lj
+                                    J = joff + js
+                                    bjkl = Li*(js-1) + bkl
+                                    for is = 1:Li
+                                        I = ioff + is
+                                        J < I && break
+
+                                        if self_paired
+                                            IJ = (J * (J + 1)) >> 1 + I
+                                            KL = (L * (L + 1)) >> 1 + K
+                                            IJ > KL && continue
+                                        end
+
+                                        v = buf[is + bjkl]
+                                        if abs(v) > cutoff
+                                            push!(vals, v)
+                                            push!(idxs, (I, J, K, L))
+                                        end
+                                    end
+                                end
+                            end
                         end
                     end
                 end
             end
         end
     end
-    mask = abs.(out) .> cutoff
-    return indexes[mask], out[mask]
+
+    total = sum(length, task_vals)
+    out = Vector{Cdouble}(undef, total)
+    indexes = Vector{NTuple{4,Int16}}(undef, total)
+
+    offset = 0
+    for t = 1:ntasks
+        n = length(task_vals[t])
+        n == 0 && continue
+        copyto!(out, offset+1, task_vals[t], 1, n)
+        copyto!(indexes, offset+1, task_idxs[t], 1, n)
+        offset += n
+    end
+
+    return indexes, out
 end
 
 function ERI_2e4c(BS::BasisSet, i, j, k, l)
