@@ -8,4 +8,5 @@ using Test
     include("test_misc.jl")
     include("test_integrals.jl")
     include("test_gradients.jl")
+    include("test_hessians.jl")
 end
