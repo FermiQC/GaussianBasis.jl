@@ -138,6 +138,8 @@ SphericalShell
 CartesianShell
 GaussianBasis.atomic_orbital_amplitude
 GaussianBasis.Libcint
+GaussianBasis.on_atom_flags
+merge_basis
 ```
 
 ## Contributing

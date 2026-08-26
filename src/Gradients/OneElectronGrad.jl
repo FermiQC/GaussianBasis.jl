@@ -39,19 +39,7 @@ function ∇overlap_μ!(out, BS::BasisSet{LCint}, i::Int, j::Int)
 end
 
 """
-    ∇overlap_ν!(out, BS::BasisSet{LCint}, i::Int, j::Int)
-
-Same as [`∇overlap_μ!`](@ref), differentiated with respect to shell `j`
-(the "ν" AO) instead of `i`. Same lack of bounds checking applies.
-"""
-function ∇overlap_ν!(out, BS::BasisSet{LCint}, i::Int, j::Int)
-    cint1e_ipovlp_sph!(out, @SVector([j, i]), BS.lib)
-    out .*= -1.0
-    return out
-end
-
-"""
-    ∇overlap!(out, BS::BasisSet{LCint}, A::Int, i::Int, j::Int)
+    ∇overlap!(out, BS::BasisSet{LCint}, A::Int, i::Int, j::Int; scratch=nothing)
     ∇overlap!(out, BS::BasisSet, A)
 
 Mutating counterpart of [`∇overlap`](@ref): writes into the caller-supplied
@@ -71,13 +59,18 @@ for gradients.
     for shells `i,j` of `BS` (shell indices, not AO indices).
   - `∇overlap!(out, BS, A)`: `out` must be a dense `nbas × nbas × 3`
     array.
+
+The shell-pair form needs a `3*Ni*Nj` scratch vector whenever the
+derivative falls on shell `j` (see below). It allocates one per call unless
+you pass `scratch`; in a loop over shell pairs, hand it a buffer sized from
+`3*Nmax^2` to make the call allocation-free.
 """
-function ∇overlap!(out, BS::BasisSet{LCint}, A::Int, i::Int, j::Int)
+function ∇overlap!(out, BS::BasisSet{LCint}, A::Int, i::Int, j::Int; scratch=nothing)
 
     i_on_A, j_on_A = GaussianBasis.on_atom_flags(BS, A, i, j)
 
     if i_on_A == j_on_A
-        out .= 0.0
+        fill!(out, 0.0)
         return out
     end
 
@@ -94,14 +87,17 @@ function ∇overlap!(out, BS::BasisSet{LCint}, A::Int, i::Int, j::Int)
         # so write straight into `out`, no intermediate buffer needed.
         ∇overlap_μ!(out, BS, i, j)
     else
-        # Derivative lands on shell j (the one on atom A); compute via [j,i]
-        # (j as the differentiated, first, shell) -- raw libcint output is
-        # (Nj,Ni,3) in memory, so transpose the first two axes back to
-        # (Ni,Nj,3) AO order. S is symmetric, so ∂S_ij/∂R_A = ∂S_ji/∂R_A
-        # transposed, same trick `∇1e!` uses for its off-diagonal mirror.
-        buf = zeros(Cdouble, 3*Ni*Nj)
-        ∇overlap_ν!(buf, BS, i, j)
-        out .= permutedims(reshape(buf, Nj, Ni, 3), (2,1,3))
+        # Derivative lands on shell j. `∇overlap_μ!` always differentiates its
+        # FIRST shell argument, so swap them -- that hands back a (Nj,Ni,3)
+        # block, transposed here into `out`'s (Ni,Nj,3) AO order. S is
+        # symmetric, so ∂S_ij/∂R_A = (∂S_ji/∂R_A)ᵀ over the two AO axes.
+        buf = scratch === nothing ? Vector{Cdouble}(undef, 3*Ni*Nj) : scratch
+        length(buf) >= 3*Ni*Nj ||
+            throw(DimensionMismatch("scratch must hold at least $(3*Ni*Nj) elements"))
+        ∇overlap_μ!(buf, BS, j, i)
+        @inbounds for k = 1:3, js = 1:Nj, is = 1:Ni
+            out[is, js, k] = buf[js + Nj*(is-1) + Nj*Ni*(k-1)]
+        end
     end
     return out
 end
@@ -157,19 +153,7 @@ function ∇kinetic_μ!(out, BS::BasisSet{LCint}, i::Int, j::Int)
 end
 
 """
-    ∇kinetic_ν!(out, BS::BasisSet{LCint}, i::Int, j::Int)
-
-Same as [`∇kinetic_μ!`](@ref), differentiated with respect to shell `j`
-(the "ν" AO) instead of `i`. Same lack of bounds checking applies.
-"""
-function ∇kinetic_ν!(out, BS::BasisSet{LCint}, i::Int, j::Int)
-    cint1e_ipkin_sph!(out, @SVector([j, i]), BS.lib)
-    out .*= -1.0
-    return out
-end
-
-"""
-    ∇kinetic!(out, BS::BasisSet{LCint}, A::Int, i::Int, j::Int)
+    ∇kinetic!(out, BS::BasisSet{LCint}, A::Int, i::Int, j::Int; scratch=nothing)
     ∇kinetic!(out, BS::BasisSet, A)
 
 Mutating counterpart of [`∇kinetic`](@ref): writes into the caller-supplied
@@ -186,13 +170,16 @@ for gradients.
     for shells `i,j` of `BS` (shell indices, not AO indices).
   - `∇kinetic!(out, BS, A)`: `out` must be a dense `nbas × nbas × 3`
     array.
+
+As with [`∇overlap!`](@ref), the shell-pair form takes an optional
+`scratch` vector (`>= 3*Ni*Nj` elements) to stay allocation-free in a loop.
 """
-function ∇kinetic!(out, BS::BasisSet{LCint}, A::Int, i::Int, j::Int)
+function ∇kinetic!(out, BS::BasisSet{LCint}, A::Int, i::Int, j::Int; scratch=nothing)
 
     i_on_A, j_on_A = GaussianBasis.on_atom_flags(BS, A, i, j)
 
     if i_on_A == j_on_A
-        out .= 0.0
+        fill!(out, 0.0)
         return out
     end
 
@@ -209,14 +196,16 @@ function ∇kinetic!(out, BS::BasisSet{LCint}, A::Int, i::Int, j::Int)
         # so write straight into `out`, no intermediate buffer needed.
         ∇kinetic_μ!(out, BS, i, j)
     else
-        # Derivative lands on shell j (the one on atom A); compute via [j,i]
-        # (j as the differentiated, first, shell) -- raw libcint output is
-        # (Nj,Ni,3) in memory, so transpose the first two axes back to
-        # (Ni,Nj,3) AO order. T is symmetric, so ∂T_ij/∂R_A = ∂T_ji/∂R_A
-        # transposed, same trick `∇1e!` uses for its off-diagonal mirror.
-        buf = zeros(Cdouble, 3*Ni*Nj)
-        ∇kinetic_ν!(buf, BS, i, j)
-        out .= permutedims(reshape(buf, Nj, Ni, 3), (2,1,3))
+        # Derivative lands on shell j -- swap the arguments so the
+        # differentiated shell is first, then transpose the (Nj,Ni,3) result
+        # into `out`. See `∇overlap!` for the full reasoning.
+        buf = scratch === nothing ? Vector{Cdouble}(undef, 3*Ni*Nj) : scratch
+        length(buf) >= 3*Ni*Nj ||
+            throw(DimensionMismatch("scratch must hold at least $(3*Ni*Nj) elements"))
+        ∇kinetic_μ!(buf, BS, j, i)
+        @inbounds for k = 1:3, js = 1:Nj, is = 1:Ni
+            out[is, js, k] = buf[js + Nj*(is-1) + Nj*Ni*(k-1)]
+        end
     end
     return out
 end
@@ -287,19 +276,32 @@ function ∇nuclear_μ!(out, BS::BasisSet{LCint}, charge_atm, i::Int, j::Int)
 end
 
 """
-    ∇nuclear_ν!(out, BS::BasisSet{LCint}, charge_atm, i::Int, j::Int)
+    nuclear_charge_sets(BS::BasisSet{LCint}, A::Int) -> (only_A, no_A)
 
-Same as [`∇nuclear_μ!`](@ref), differentiated with respect to shell `j`
-(the "ν" AO) instead of `i`. Same lack of bounds checking applies.
+The two charge-fudged copies of `BS.lib.atm` that the nuclear gradient needs:
+`only_A` keeps atom `A`'s nuclear charge and zeroes every other, `no_A` does
+the reverse. Passing either to [`∇nuclear_μ!`](@ref) restricts the potential
+`Zc/|r-Rc|` it differentiates to that subset of nuclei.
+
+Depends only on `BS` and `A`, never on the shell pair, so callers looping
+over shell pairs for one atom should build it once and pass it through
+`∇nuclear!`'s `charges` keyword instead of paying for it per call.
 """
-function ∇nuclear_ν!(out, BS::BasisSet{LCint}, charge_atm, i::Int, j::Int)
-    cint1e_ipnuc_sph!(out, @SVector(Cint[j-1, i-1]), charge_atm, BS.lib.natm, BS.lib.bas, BS.lib.nbas, BS.lib.env)
-    out .*= -1.0
-    return out
+function nuclear_charge_sets(BS::BasisSet{LCint}, A::Int)
+    only_A = copy(BS.lib.atm)
+    no_A   = copy(BS.lib.atm)
+    @inbounds for k in eachindex(BS.atoms)
+        if k == A
+            no_A[1 + 6*(k-1)] = 0
+        else
+            only_A[1 + 6*(k-1)] = 0
+        end
+    end
+    return only_A, no_A
 end
 
 """
-    ∇nuclear!(out, BS::BasisSet{LCint}, A::Int, i::Int, j::Int)
+    ∇nuclear!(out, BS::BasisSet{LCint}, A::Int, i::Int, j::Int; scratch=nothing, charges=nothing)
     ∇nuclear!(out, BS::BasisSet, A)
 
 Mutating counterpart of [`∇nuclear`](@ref): writes into the caller-supplied
@@ -307,19 +309,21 @@ Mutating counterpart of [`∇nuclear`](@ref): writes into the caller-supplied
 full-tensor form builds on. Unlike `∇overlap!`/`∇kinetic!`, no case is ever
 a free/skippable zero: `V_ij` sums the potential over every nucleus, so
 even a shell pair with neither `i` nor `j` on atom `A` still has a
-nonzero derivative through the `Z_A/|r-R_A|` operator term itself
-moving. `K_A(i,j)`/`K_notA(i,j)` below are the bra-derivative
-`cint1e_ipnuc_sph!` kernel at shell pair `(i,j)` using only atom `A`'s
-charge / every charge except `A`'s:
+nonzero derivative through the `Z_A/|r-R_A|` operator term itself moving.
 
-  - `i,j` both on `A`:    `K_notA(i,j) + K_notA(j,i)ᵀ`
-  - `i,j` both off `A`:    `-K_A(i,j) - K_A(j,i)ᵀ`
-  - `i` on `A`, `j` off:    `K_notA(i,j) - K_A(j,i)ᵀ`
-  - `i` off `A`, `j` on:     `-K_A(i,j) + K_notA(j,i)ᵀ`
+Every case reduces to the same two-term rule. Writing `K_X(p,q)` for
+[`∇nuclear_μ!`](@ref) -- the kernel differentiated w.r.t. its FIRST shell
+argument, over the nuclei that `X` leaves un-zeroed -- and assigning each
+shell a `(sign, charge set)` of `(+, no_A)` when it sits on `A` and
+`(-, only_A)` when it does not:
 
-(transpose over the two AO axes, per Cartesian direction). Prefer the
-whole-array form when you need many shell pairs for the same atom -- this
-one rebuilds the fudged nuclear-charge arrays on every call.
+    out = s_i * K_{X_i}(i,j)  +  s_j * K_{X_j}(j,i)ᵀ
+
+(transpose over the two AO axes, per Cartesian direction). Expanding the
+four on/off combinations recovers the familiar cases, e.g. `i,j` both on
+`A` gives `K_notA(i,j) + K_notA(j,i)ᵀ`, and both off gives
+`-K_A(i,j) - K_A(j,i)ᵀ`. Both terms are the *same* primitive, differing only
+in argument order and which charge set is passed.
 
 Only implemented for the `LCint` backend -- there is no `ACSint` fallback
 for gradients.
@@ -330,8 +334,15 @@ for gradients.
     for shells `i,j` of `BS` (shell indices, not AO indices).
   - `∇nuclear!(out, BS, A)`: `out` must be a dense `nbas × nbas × 3`
     array.
+
+In a loop over shell pairs, pass `charges` (from
+[`nuclear_charge_sets`](@ref), which depends only on `BS`/`A`) and a
+`scratch` vector of at least `3*Ni*Nj` elements; the call is then
+allocation-free. Without them it rebuilds both charge arrays and a scratch
+buffer every time.
 """
-function ∇nuclear!(out, BS::BasisSet{LCint}, A::Int, i::Int, j::Int; scratch=nothing)
+function ∇nuclear!(out, BS::BasisSet{LCint}, A::Int, i::Int, j::Int;
+                   scratch=nothing, charges=nothing)
     i_on_A, j_on_A = GaussianBasis.on_atom_flags(BS, A, i, j)
     Ni = num_basis(BS[i])
     Nj = num_basis(BS[j])
@@ -340,31 +351,23 @@ function ∇nuclear!(out, BS::BasisSet{LCint}, A::Int, i::Int, j::Int; scratch=n
         throw(DimensionMismatch("Size of the output array needs to be ($Ni, $Nj, 3)"))
     end
 
-    only_A = deepcopy(BS.lib.atm)
-    no_A = deepcopy(BS.lib.atm)
-    for k in eachindex(BS.atoms)
-        if k == A
-            no_A[1 + 6*(k-1)] = 0
-        else
-            only_A[1 + 6*(k-1)] = 0
-        end
-    end
+    only_A, no_A = charges === nothing ? nuclear_charge_sets(BS, A) : charges
 
-    if i_on_A && j_on_A
-        if scratch === nothing
-            scratch = zeros(Ni, Nj, 3)
-        end
-        ∇nuclear_ν!(scratch, BS, no_A, i, j)
-        out .+= permutedims(reshape(scratch, Nj, Ni, 3), (2,1,3))
-        ∇nuclear_μ!(scratch, BS, no_A, i, j)
-        out .+= reshape(scratch, Ni, Nj, 3)
-        #out .= _nuc_pair_kernel(BS, no_A, i, j) .+ permutedims(_nuc_pair_kernel(BS, no_A, j, i), (2,1,3))
-    elseif !i_on_A && !j_on_A
-        out .= .-(_nuc_pair_kernel(BS, only_A, i, j) .+ permutedims(_nuc_pair_kernel(BS, only_A, j, i), (2,1,3)))
-    elseif i_on_A && !j_on_A
-        out .= _nuc_pair_kernel(BS, no_A, i, j) .- permutedims(_nuc_pair_kernel(BS, only_A, j, i), (2,1,3))
-    else # !i_on_A && j_on_A
-        out .= .-_nuc_pair_kernel(BS, only_A, i, j) .+ permutedims(_nuc_pair_kernel(BS, no_A, j, i), (2,1,3))
+    # Term differentiated w.r.t. shell i -- libcint's [i,j] layout is already
+    # out's (Ni,Nj,3), so this writes straight in (and overwrites whatever was
+    # there, so a reused `out` needs no zeroing).
+    ∇nuclear_μ!(out, BS, i_on_A ? no_A : only_A, i, j)
+    i_on_A || (out .*= -1.0)
+
+    # Term differentiated w.r.t. shell j -- same primitive with the arguments
+    # swapped, which returns a (Nj,Ni,3) block; transpose it in as we add.
+    buf = scratch === nothing ? Vector{Cdouble}(undef, 3*Ni*Nj) : scratch
+    length(buf) >= 3*Ni*Nj ||
+        throw(DimensionMismatch("scratch must hold at least $(3*Ni*Nj) elements"))
+    ∇nuclear_μ!(buf, BS, j_on_A ? no_A : only_A, j, i)
+    sj = j_on_A ? 1.0 : -1.0
+    @inbounds for k = 1:3, js = 1:Nj, is = 1:Ni
+        out[is, js, k] += sj * buf[js + Nj*(is-1) + Nj*Ni*(k-1)]
     end
     return out
 end
@@ -374,22 +377,6 @@ function ∇nuclear(BS::BasisSet, A::Int, i::Int, j::Int)
     Nj = num_basis(BS[j])
     out = zeros(Ni, Nj, 3)
     return ∇nuclear!(out, BS, A, i, j)
-end
-
-# Bra-derivative cint1e_ipnuc_sph! kernel at shell pair (i,j), using a
-# caller-supplied (possibly charge-fudged) atm array -- now a thin wrapper
-# around ∇nuclear_μ!, which every call site here already matches (they get
-# the "differentiated w.r.t. the FIRST shell argument" convention by
-# swapping i,j themselves before calling). Kept only so ∇nuclear!'s branches
-# below don't need touching yet; the goal is to inline ∇nuclear_μ!/
-# ∇nuclear_ν! directly at each call site (mirroring ∇overlap!/∇kinetic!)
-# and drop this wrapper entirely.
-function _nuc_pair_kernel(BS::BasisSet{LCint}, charge_atm, i::Int, j::Int)
-    Ni = num_basis(BS[i])
-    Nj = num_basis(BS[j])
-    out = zeros(Cdouble, Ni, Nj, 3)
-    ∇nuclear_μ!(out, BS, charge_atm, i, j)
-    return out
 end
 
 """
@@ -416,26 +403,106 @@ function ∇nuclear(BS::BasisSet, A)
     return ∇nuclear!(out, BS, A)
 end
 
-function ∇nuclear!(out, BS::BasisSet, A)
+function ∇nuclear!(out, BS::BasisSet{LCint}, A)
 
     if size(out) != (BS.nbas, BS.nbas, 3)
         throw(DimensionMismatch("Size of the output array needs to be (nbas, nbas, 3)"))
     end
 
-    atomA = BS.atoms[A]
+    Nvals = num_basis.(BS.shells)
+    ao_offset = cumsum(Nvals) .- Nvals
+    Nmax = maximum(Nvals)
 
-    # Fudge lc_atoms
-    only_A = deepcopy(BS.lib.atm)
-    no_A = deepcopy(BS.lib.atm)
-    for k = eachindex(BS.atoms)
-        if k == A
-            no_A[1 + 6*(k-1)] = 0
-            continue
+    # Depends only on BS/A -- built once here rather than per shell pair.
+    only_A, no_A = nuclear_charge_sets(BS, A)
+
+    # Serial, like ∇1e! and for the same reasons (see its comment): a single
+    # call is too small to thread profitably, and callers wanting parallelism
+    # should thread over atoms, which are independent and write disjoint
+    # outputs. Being serial also makes this trivially thread-safe to call
+    # from such an outer loop.
+    bufi = Vector{Cdouble}(undef, 3*Nmax^2)
+    bufj = Vector{Cdouble}(undef, 3*Nmax^2)
+
+    # V is symmetric, so dV_ij/dR_A = (dV_ji/dR_A)^T -- visit each unordered
+    # shell pair once and mirror. Every block uses the same two-term rule as
+    # the shell-pair form above: one call to the primitive per shell, with the
+    # arguments swapped for the second and the charge set chosen by whether
+    # that shell sits on A.
+    @inbounds for i in 1:BS.nshells
+        Ni = Nvals[i]; ioff = ao_offset[i]
+        for j in i:BS.nshells
+            Nj = Nvals[j]; joff = ao_offset[j]
+            i_on_A, j_on_A = GaussianBasis.on_atom_flags(BS, A, i, j)
+
+            ∇nuclear_μ!(bufi, BS, i_on_A ? no_A : only_A, i, j)   # (Ni,Nj,3)
+            ∇nuclear_μ!(bufj, BS, j_on_A ? no_A : only_A, j, i)   # (Nj,Ni,3)
+            si = i_on_A ? 1.0 : -1.0
+            sj = j_on_A ? 1.0 : -1.0
+
+            for k = 1:3
+                bi = Ni*Nj*(k-1)
+                bj = Nj*Ni*(k-1)
+                for js = 1:Nj, is = 1:Ni
+                    v = si*bufi[bi + is + Ni*(js-1)] + sj*bufj[bj + js + Nj*(is-1)]
+                    out[ioff+is, joff+js, k] = v
+                    if i != j
+                        out[joff+js, ioff+is, k] = v
+                    end
+                end
+            end
         end
-        only_A[1 + 6*(k-1)] = 0
     end
 
-    # Shell indexes for basis in the atom A (C notation: Starts from 0)
+    return out
+end
+
+
+###########################################################
+###########################################################
+#                     General kernel                       #
+###########################################################
+###########################################################
+
+# Shared whole-array kernel for overlap/kinetic, parametrized by `callback`
+# (the bare, unchecked shell-differentiation primitive, e.g. `∇overlap_μ!`)
+# instead of a string, mirroring how `get_1e_matrix!` in
+# Integrals/OneElectron.jl takes a callback rather than branching on one.
+# Calls the BARE primitive (`∇overlap_μ!`/`∇kinetic_μ!`) rather than the
+# safe, bounds-checked `∇overlap!`/`∇kinetic!` shell-pair form: it skips the
+# per-pair `on_atom_flags`/size checks this loop has already established, and
+# never needs the shell-pair form's transposing branch, because it only ever
+# visits pairs with `i` on A -- so the differentiated shell is always
+# libcint's first argument and the (j,i) block comes free from the mirror in
+# the scatter. Translational invariance also lets it skip same-membership
+# pairs entirely and visit Ashells×notAshells once. Safe because `i`/`j` are
+# always drawn from this loop's own bounded `Ashells`/`notAshells` and `buf`
+# is sized from `Nmax` up front, not because the callback validates anything.
+#
+# Nuclear isn't wired through here: its per-pair rule needs TWO primitive
+# calls with DIFFERENT charge sets (see `∇nuclear!`), which this
+# single-callback shape cannot express, and none of its blocks are zero, so
+# it has no same-membership pairs to skip either.
+function ∇1e(callback, BS::BasisSet, A)
+    out = zeros(BS.nbas, BS.nbas, 3)
+    return ∇1e!(callback, out, BS, A)
+end
+
+function ∇1e!(callback, out, BS::BasisSet, A)
+
+    if size(out) != (BS.nbas, BS.nbas, 3)
+        throw(DimensionMismatch("Size of the output array needs to be (nbas, nbas, 3)"))
+    end
+
+    # Blocks with both shells on A (or both off it) are identically zero and
+    # are never visited below, so `out` must start clean -- otherwise a reused
+    # buffer keeps its old contents there, which is exactly the case this
+    # mutating form exists to serve.
+    fill!(out, 0.0)
+
+    atomA = BS.atoms[A]
+
+    # Shell indexes for basis in the atom A
     Ashells = Int[]
     notAshells = Int[]
     for i in 1:BS.nshells
@@ -450,94 +517,60 @@ function ∇nuclear!(out, BS::BasisSet, A)
     Nvals = num_basis.(BS.shells)
     ao_offset = cumsum(Nvals) .- Nvals
     Nmax = maximum(Nvals)
-    # i ∉ A & j ∉ A
-    allocate(body) = body(zeros(Cdouble, 3*Nmax^2))
-    workerpool(allocate, notAshells; chunksize = 1) do i, buf
-        @inbounds begin
-            Ni = Nvals[i]
-            ioff = ao_offset[i]
-            I = (ioff+1):(ioff+Ni)
-            for j in notAshells
-                Nj = Nvals[j]
-                Nij = Ni*Nj
-                joff = ao_offset[j]
-                J = (joff+1):(joff+Nj)
 
-                # + ⟨i'|Va|j⟩ + ⟨i|Va|j'⟩   (Note that Va is the potential of the nuclei A alone!!)
-                cint1e_ipnuc_sph!(buf, @SVector(Cint[i-1,j-1]), only_A, BS.lib.natm, BS.lib.bas, BS.lib.nbas, BS.lib.env)
-
-                # Get strides for each cartesian
-                for k in 1:3
-                    r = (1+Nij*(k-1)):(k*Nij)
-                    ∇k = reshape(buf[r], Int(Ni), Int(Nj))
-                    out[I,J,k] .+= ∇k  # ⟨i'|Va|j ⟩
-                end
-            end
-        end # inbounds
+    # Deliberately serial, and thread-safe as a result: a single call is far too
+    # small to thread profitably, and its parallelism is capped by |Ashells|
+    # (typically 5-15) no matter how many threads exist. Measured medians on 24
+    # cores, serial vs a workerpool over Ashells (us):
+    #
+    #   work     |   216 |   840 |  4872 | 19800 | 25920 | 57240 | 95700
+    #   serial   |  12.2 |  30.3 | 156.5 | 297.0 | 489.7 |1657.0 |2102.4
+    #   threaded | 132.7 | 104.3 | 251.6 | 333.5 | 490.6 | 862.4 | 958.2
+    #
+    # (work = output elements written = 6*nbas_on_A*(nbas - nbas_on_A).)
+    # Threading only pays past ~350 basis functions, and even then the threaded
+    # path is bimodal where the serial one is jitter-free -- minimum-of-N
+    # timings flatter it badly. Since a real gradient loops over every atom
+    # anyway, and atoms are independent and write disjoint outputs, the useful
+    # parallelism lives in that outer loop: callers should thread over atoms
+    # and call this per atom.
+    buf = Vector{Cdouble}(undef, 3*Nmax^2)
+    for i in Ashells
+        _scatter_∇1e!(callback, out, BS, i, notAshells, buf, Nvals, ao_offset)
     end
-
-    # i ∈ A & j ∈ A
-    workerpool(allocate, Ashells; chunksize = 1) do i, buf
-        @inbounds begin
-            Ni = Nvals[i]
-            ioff = ao_offset[i]
-            I = (ioff+1):(ioff+Ni)
-            for j in Ashells
-                Nj = Nvals[j]
-                Nij = Ni*Nj
-                joff = ao_offset[j]
-                J = (joff+1):(joff+Nj)
-
-                # - ⟨i'|∑Vc|j⟩ - ⟨i|∑Vc|j'⟩ c != a
-                cint1e_ipnuc_sph!(buf, @SVector(Cint[i-1,j-1]), no_A, BS.lib.natm, BS.lib.bas, BS.lib.nbas, BS.lib.env)
-
-                for k in 1:3
-                    r = (1+Nij*(k-1)):(k*Nij)
-                    ∇k = reshape(buf[r], Int(Ni), Int(Nj))
-                    out[I,J,k] .-= ∇k  # ⟨i'|∑Vc|j ⟩ c != a
-                end
-            end
-        end #inbounds
-    end
-
-    # i ∈ A & j ∉ A
-    workerpool(allocate, Ashells; chunksize = 1) do i, buf
-        @inbounds begin
-            Ni = Nvals[i]
-            ioff = ao_offset[i]
-            I = (ioff+1):(ioff+Ni)
-            for j in notAshells
-                Nj = Nvals[j]
-                Nij = Ni*Nj
-                joff = ao_offset[j]
-                J = (joff+1):(joff+Nj)
-
-                # - ⟨i'|∑Vc|j⟩ + ⟨i|Va|j'⟩ c != a
-                cint1e_ipnuc_sph!(buf, @SVector(Cint[i-1,j-1]), no_A, BS.lib.natm, BS.lib.bas, BS.lib.nbas, BS.lib.env)
-                for k in 1:3
-                    r = (1+Nij*(k-1)):(k*Nij)
-                    ∇k = buf[r]
-                    out[I,J,k] .-= reshape(∇k, Int(Ni), Int(Nj))
-                end
-
-                cint1e_ipnuc_sph!(buf, @SVector(Cint[j-1,i-1]), only_A, BS.lib.natm, BS.lib.bas, BS.lib.nbas, BS.lib.env)
-                for k in 1:3
-                    r = (1+Nij*(k-1)):(k*Nij)
-                    ∇k = buf[r]
-                    out[I,J,k] .+= transpose(reshape(∇k, Int(Nj), Int(Ni)))
-                end
-            end
-        end #inbounds
-    end
-
-    # Add transpose values
-    # This must be done outside the threaded loops
-    # to avoid race conditions.
-    for k in 1:3
-        out[:,:,k] .+= out[:,:,k]'
-    end
-
     return out
+end
+
+# One shell `i` on atom A against every shell off it: evaluate each pair into
+# `buf` and scatter the block plus its (j,i) mirror. Shared by the serial and
+# threaded paths above so the two cannot drift apart.
+function _scatter_∇1e!(callback, out, BS, i, notAshells, buf, Nvals, ao_offset)
+    @inbounds begin
+        Ni = Nvals[i]
+        ioff = ao_offset[i]
+        for j in notAshells
+            Nj = Nvals[j]
+            joff = ao_offset[j]
+            Nij = Ni*Nj
+            # Call the bare shell-differentiation primitive. `i` is on A, so
+            # it is the differentiated (first) shell and the raw buffer is
+            # already (Ni,Nj,3) in memory.
+            callback(buf, BS, i, j)
+
+            # Scatter the block and its (j,i) mirror in one scalar pass.
+            # The mirror's transpose costs nothing here -- it is just the
+            # swapped index expression -- so no permutedims and no
+            # range-indexed temporaries are needed.
+            for k in 1:3
+                base = Nij*(k-1)
+                for js = 1:Nj, is = 1:Ni
+                    v = buf[base + is + Ni*(js-1)]
+                    out[ioff+is, joff+js, k] = v
+                    out[joff+js, ioff+is, k] = v
+                end
+            end
+        end
+    end
 end
 
 

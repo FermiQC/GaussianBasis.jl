@@ -342,10 +342,7 @@ end
 
 function get_1e_matrix!(callback, out, BS1::BasisSet{LCint}, BS2::BasisSet{LCint})
 
-    atoms = unique(vcat(BS1.atoms, BS2.atoms))
-    basis = vcat(BS1.shells, BS2.shells)
-
-    Bmerged = BasisSet("$(BS1.name*BS2.name)", atoms, basis)
+    Bmerged = merge_basis(BS1, BS2)
 
     # Pre compute number of basis per shell
     Nvals1 = num_basis.(BS1.shells)

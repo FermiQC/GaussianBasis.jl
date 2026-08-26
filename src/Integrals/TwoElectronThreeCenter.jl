@@ -109,9 +109,7 @@ function ERI_2e3c!(out, BS1::BasisSet{LCint}, BS2::BasisSet{LCint}; Bmerged::Uni
     # pass it in rather than reconstructing it here each time. It's a small
     # fraction of the runtime but over half of this function's allocation.
     if Bmerged === nothing
-        atoms = unique(vcat(BS1.atoms, BS2.atoms))
-        basis = vcat(BS1.shells, BS2.shells)
-        Bmerged = BasisSet("$(BS1.name*BS2.name)", atoms, basis)
+        Bmerged = merge_basis(BS1, BS2)
     end
 
     # Pre compute number of basis per shell

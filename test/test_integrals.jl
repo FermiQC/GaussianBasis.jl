@@ -85,7 +85,10 @@ end
     d3 = reshape(d2, (15,34)) * Co #(15,5) array
     d3 = reshape(d3, 5,3,5) 
     μ = 2 .* sum(d3[i,:,i] for i=1:5)
-    @test isapprox(μ, [-40.280477, 43.202326, 0.0000], atol=1e-5)
+    # Cross-checked against pyscf's int1e_r contracted with the same orbitals.
+    # Note this reference is tied to lib/cc-pvdz.gbs: `CH4_Orbitals` is a fixed
+    # coefficient matrix, so re-deriving the basis file changes μ.
+    @test isapprox(μ, [-42.126809, 45.182587, 0.0000], atol=1e-5)
 end
 
 @testset "Multipole" begin

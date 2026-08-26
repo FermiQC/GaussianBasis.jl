@@ -44,27 +44,15 @@ overlap. Note also that the `x` sub-array is zero for shells on the same atom (s
     derivative, divide by `Molecules.bohr_to_angstrom` (≈0.529177 Å/bohr),
     i.e. multiply by ≈1.8897 bohr/Å.
 
-
-### Implementation Details
-
-Under the hood, for example in `libcint`, derivatives can only be calculated with respect to electronic coordinates. However, because basis functions depend only on the distance $(r_i - R_A)$, we can use $\partial/\partial R_A = -\partial/\partial r_i$ to get nuclear derivatives.
-
-An important property of nuclear derivatives is translational invariance. For an operator $\hat{O}$ independant of $R_A$, the derivative of its matrix element $O_{\mu\nu} = \langle \chi_\mu|\hat{O}|\chi_\nu\rangle$ satisfies
-
-```math
-\{\mu,\nu\} \in A \implies \frac{\partial{O_{\mu\nu}}}{\partial{R_A}} = \frac{\partial\langle \chi_\mu|}{\partial{R_A}}|\hat{O}|\chi_\nu\rangle + \langle \chi_\mu|\hat{O}|\frac{\partial\chi_\nu}{\partial{R_A}}\rangle = 0
-```
-
-
 ## Overlap
 
 The derivative of the overlap integral is defined as follows:
 
 ```math
-\frac{\partial S_{\mu\nu}}{\partial \mathbf{R}_A} = \frac{\partial\langle \chi_\mu | \chi_\nu \rangle}{\partial \mathbf{R}_A} =  \langle \frac{\partial \chi_\mu}{\partial \mathbf{R}_A} | \chi_\nu \rangle + \langle \chi_\mu | \frac{\chi_\nu}{\partial \mathbf{R}_A} \rangle
+\frac{\partial S_{\mu\nu}}{\partial \mathbf{R}_A} = \frac{\partial\langle \chi_\mu | \chi_\nu \rangle}{\partial \mathbf{R}_A} 
 ```
 
-If the shells are on the same atoms ($\mu, \nu \in A$) or if neither shell is on the atom ($\mu, \nu \notin A$), the derivative is exacly zero. Hence, even though two terms are shown above, only one term is non-zero. 
+If the shells are on the same atoms ($\mu, \nu \in A$) or if neither shell is on the atom ($\mu, \nu \notin A$), the derivative is exacly zero. 
 
 Functions follow the same pattern found in [One-Electron Integrals](@ref), except you must include a mandatory argument `A` which indicates the atom for each derivatives are evaluated.
 ```julia-repl
@@ -241,7 +229,7 @@ exactly the same single flip used for overlap and kinetic:
 
 `∇overlap_μ!`/`∇kinetic_μ!` apply that same flip by hand (`.*= -1.0`)
 because `S`/`T` carry no leading sign of their own to fold it into;
-`∇nuclear_μ!`/`∇nuclear_ν!` don't need to, only because `V^A`/`V^{¬A}`
+`∇nuclear_μ!` doesn't need to, only because `V^A`/`V^{¬A}`
 *already* carry a leading minus (from `Z` being stored positive but the
 potential being attractive) for the flip to land inside of -- not because
 `cint1e_ipnuc_sph!` is doing anything libcint's other kernels don't.
@@ -318,6 +306,7 @@ julia> dropdims(dr, dims=(1,2)) # Shows derivatives along x, y, and z
 
 ```@docs
 ∇ERI_2e4c(::BasisSet, ::Any)
+∇ERI_2e4c!(::Any, ::BasisSet, ::Any)
 ∇sparseERI_2e4c
 ```
 
@@ -325,22 +314,78 @@ julia> dropdims(dr, dims=(1,2)) # Shows derivatives along x, y, and z
 
 ```@docs
 ∇ERI_2e3c(::BasisSet, ::BasisSet, ::Any)
+∇ERI_2e3c!
 ```
 
 ## Two-electron two centers
 
 ```@docs
 ∇ERI_2e2c(::BasisSet, ::Any)
+∇ERI_2e2c!(::Any, ::BasisSet, ::Any)
 ```
-### Shell-pair/shell-quartet-level primitives
+
+## Choosing a level
+
+Every gradient here comes in the same four levels, from most convenient to
+fastest. All of them ultimately go through the same libcint primitive, so
+they agree to the last bit -- they differ only in how much bookkeeping they
+do for you.
+
+| level | example | notes |
+|:------|:--------|:------|
+| dense, allocating | `∇overlap(bs, A)` | returns a fresh `nbas × nbas × 3` array |
+| dense, preallocated | `∇overlap!(out, bs, A)` | reuses `out`; zeroes it for you |
+| shell pair/quartet | `∇overlap!(out, bs, A, i, j)` | validates sizes, resolves shell membership, returns the free zero when the block vanishes |
+| bare primitive | `∇overlap_μ!(out, bs, i, j)` | one libcint call, no checks at all |
+
+Two things are worth knowing before dropping a level.
+
+**The dense drivers exploit symmetry that a per-pair loop must reproduce
+itself.** `S`, `T`, `V`, `(P|Q)` and `(μν|P)` are all symmetric under the
+bra-shell swap, so the dense builders visit only `i <= j` and write the
+mirror from the same block. A loop that calls the shell-pair form for every
+ordered `(i,j)` gets the right answer at twice the libcint cost, with
+nothing to warn it. Loop `i <= j` and mirror, and the shell-pair form costs
+essentially nothing over the dense driver (measured ~1.0x).
+
+**Hoistable state should be hoisted.** Several routines rebuild per-call
+state that depends only on the basis and the atom. Pass it in and the call
+becomes allocation-free:
+
+| routine | keyword | build it with |
+|:--------|:--------|:--------------|
+| `∇overlap!`, `∇kinetic!`, `∇nuclear!` (shell pair) | `scratch` | `Vector{Cdouble}(undef, 3*Nmax^2)` |
+| `∇nuclear!` (shell pair) | `charges` | [`nuclear_charge_sets`](@ref) |
+| `∇ERI_2e3c!` | `Bmerged` | merged `BasisSet` of the two bases |
+| `∇sparseERI_2e4c` | `ij_vals`, `σvals` | [`schwarz_bounds`](@ref) |
+
+### Shell-pair/shell-quartet-level forms
 
 For callers building an integral-direct gradient or CPHF loop that never
-wants the full dense array materialized, single-shell-pair (or
-shell-quartet) forms are also available:
+wants the full dense array materialized:
 
 ```@docs
 ∇ERI_2e4c(::BasisSet, ::Int, ::Int, ::Int, ::Int, ::Int)
-∇ERI_2e4c!(::Any, ::BasisSet, ::NTuple{4,Bool}, ::Int, ::Int, ::Int, ::Int, ::Vector{Float64}, ::Vector{Float64}, ::Vector{Int32})
+∇ERI_2e4c!(::Any, ::BasisSet, ::NTuple{4,Bool}, ::Int, ::Int, ::Int, ::Int, ::Vector{Float64})
+```
+
+### Bare libcint primitives
+
+The lowest level. Each does exactly one libcint call and applies the sign
+flip to the nuclear-coordinate convention -- no bounds checking, no
+zero-block skipping, no output-size validation. Every one of them
+differentiates its **first** shell argument, so any other center is reached
+by passing that shell first and permuting the result yourself.
+
+```@docs
+∇overlap_μ!
+∇kinetic_μ!
+∇nuclear_μ!
+∇ERI_2e2c_μ!
+∇ERI_2e3c_μ!
+∇ERI_2e4c_μ!
+nuclear_charge_sets
+schwarz_bounds
 ```
 
 ## Example

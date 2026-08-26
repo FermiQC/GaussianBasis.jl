@@ -1,3 +1,5 @@
+export merge_basis, on_atom_flags, atomic_orbital_amplitude
+
 function string_repr(B::SphericalShell)
     # Generate Unicode symbol for sub number
     l_sub = Char(0x2080 + B.l)
@@ -215,6 +217,7 @@ properly, so they always thread.
 """
 const THREADING_THRESHOLD_1E = 2_000
 
+
 # adapted from https://juliafolds.github.io/data-parallelism/tutorials/concurrency-patterns/
 function workerpool(work!, allocate, inputs; chunksize,ntasks = Threads.nthreads())
     requests = Channel{Vector{eltype(inputs)}}(Inf)
@@ -232,6 +235,23 @@ function workerpool(work!, allocate, inputs; chunksize,ntasks = Threads.nthreads
             end
         end
     end
+end
+
+"""
+    merge_basis(BS1::BasisSet, BS2::BasisSet) -> BasisSet
+
+The concatenation of `BS1` and `BS2` into one `BasisSet` -- regular shells
+first, auxiliary second -- as libcint's 3-center kernels require, since they
+resolve all three shell indices against a single basis. An auxiliary shell
+`k` of `BS2` is therefore addressed as `k + BS1.nshells` in the result.
+
+Depends only on `BS1`/`BS2`, never on atoms or shells, so routines that take
+a `Bmerged` keyword should be handed one built once outside the loop.
+"""
+function merge_basis(BS1::BasisSet, BS2::BasisSet)
+    atoms = unique(vcat(BS1.atoms, BS2.atoms))
+    basis = vcat(BS1.shells, BS2.shells)
+    return BasisSet("$(BS1.name*BS2.name)", atoms, basis)
 end
 
 """

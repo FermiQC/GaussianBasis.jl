@@ -6,7 +6,7 @@
 # screening here (that's Fermi's own loop's job, same split the gradient
 # primitive already uses -- see that file's header comment), only the free,
 # exact (not threshold-based) structural zero checks. Everything below this
-# comment (`eri_hess_kernel`/`eri_hess_same`/`eri_hess_cross`) is ported
+# comment (the placement algebra below) is ported
 # near-verbatim from Fermi.jl's `Hessians/TwoElectronHess.jl`, which already
 # did the hard, error-prone work of confirming libcint's kernel-to-shell-pair
 # mapping and axis orientation against `cint_funcs.h` and finite difference --
@@ -40,165 +40,118 @@
 # (cint1e_iprinvip_sph!). ipip1 (same shell, mixed partials of the same
 # point commute) needs no such correction.
 
-function eri_hess_kernel(kern, bset::BasisSet, a, b, c, d)
-    Na, Nb, Nc, Nd = num_basis.(bset.shells[[a, b, c, d]])
-    buf = zeros(Cdouble, 9 * Na * Nb * Nc * Nd)
-    kern(buf, [a, b, c, d], bset.lib)
-    return permutedims(reshape(buf, Na, Nb, Nc, Nd, 3, 3), (1, 2, 3, 4, 6, 5))
+"""
+    ∇2ERI_2e4c_μμ!(out, BS::BasisSet{LCint}, i, j, k, l)
+    ∇2ERI_2e4c_μν!(out, BS::BasisSet{LCint}, i, j, k, l)
+    ∇2ERI_2e4c_μλ!(out, BS::BasisSet{LCint}, i, j, k, l)
+
+Bare libcint calls for the 4-center `(ij|kl)` Hessian. Three kernels cover
+every placement, because the four centers form two bra/ket pairs and a second
+derivative can land within one pair or across them:
+
+| primitive | libcint | placement |
+|:----------|:--------|:----------|
+| `_μμ!` | `ipip1` | both derivatives on shell-argument position 1 |
+| `_μν!` | `ipvip1` | one on position 1, one on position 2 (same pair) |
+| `_μλ!` | `ip1ip2` | one on position 1, one on position 3 (across pairs) |
+
+Every other placement is reached by permuting the shell arguments -- e.g.
+both derivatives on the third shell is `_μμ!(out, BS, k, l, i, j)` -- and
+transposing the AO axes of the result back. `∇2ERI_2e4c!` does exactly that,
+folding each permutation into the index expression of its accumulate.
+
+!!! warning "Derivative-axis order"
+    All three emit their two derivative-component axes in **(q,p)** order,
+    reversed from the naive expectation. For `_μμ!` this is invisible (mixed
+    partials of the same point commute), but not for the cross kernels.
+
+`out` is a raw `(Na,Nb,Nc,Nd,3,3)` block and may be a contiguous view.
+
+> No bounds checking, no zero-block skipping, no output-size validation.
+"""
+function ∇2ERI_2e4c_μμ!(out, BS::BasisSet{LCint}, i::Int, j::Int, k::Int, l::Int)
+    lib = BS.lib
+    cint2e_ipip1_sph!(out, @SVector(Cint[i-1, j-1, k-1, l-1]),
+                      lib.atm, lib.natm, lib.bas, lib.nbas, lib.env)
+    return out
 end
 
-# Scratch-buffer-accepting core, same math as `eri_hess_kernel` above but
-# writing the raw libcint call into `buf` and the axis-swapped ((...,6,5))
-# result into `dest` (both caller-owned, reused across many calls) instead of
-# allocating fresh each time -- see this file's header comment and
-# `∇ERI_2e4c!`'s scratch-buffer docstring in `Gradients/TwoElectronGrad.jl`
-# for the motivation (profiling found the allocating chain here, up to 16
-# calls deep per shell quartet via `∇2ERI_2e4c!`'s posA/posB loop, costing
-# several times more per-call allocation than the gradient's already-fixed
-# 4-branch case). `dest` must be sized `>= 9*Na*Nb*Nc*Nd`; returns a reshaped
-# view into it.
-function eri_hess_kernel!(buf::Vector{Cdouble}, dest::Vector{Cdouble}, shls::Vector{Cint}, kern, bset::BasisSet, a, b, c, d)
-    Na, Nb, Nc, Nd = num_basis.(bset.shells[[a, b, c, d]])
-    n = Na * Nb * Nc * Nd * 9
-    shls[1] = a - 1; shls[2] = b - 1; shls[3] = c - 1; shls[4] = d - 1
-    lib = bset.lib
-    bufv = view(buf, 1:n)
-    kern(bufv, shls, lib.atm, lib.natm, lib.bas, lib.nbas, lib.env)
-    src = reshape(bufv, Na, Nb, Nc, Nd, 3, 3)
-    destv = reshape(view(dest, 1:n), Na, Nb, Nc, Nd, 3, 3)
-    permutedims!(destv, src, (1, 2, 3, 4, 6, 5))
-    return destv
+@doc (@doc ∇2ERI_2e4c_μμ!)
+function ∇2ERI_2e4c_μν!(out, BS::BasisSet{LCint}, i::Int, j::Int, k::Int, l::Int)
+    lib = BS.lib
+    cint2e_ipvip1_sph!(out, @SVector(Cint[i-1, j-1, k-1, l-1]),
+                       lib.atm, lib.natm, lib.bas, lib.nbas, lib.env)
+    return out
 end
 
-# Second derivative of the (p,q,r,s) integral w.r.t. the shells at argument
-# positions posA, posB (1..4, corresponding to p,q,r,s respectively), returned
-# as a (Np,Nq,Nr,Ns,3,3) tensor in (p,q,r,s) AO-axis order regardless of which
-# positions were differentiated. posA == posB (same-shell case) is handled by
-# eri_hess_same below; this function only handles posA != posB.
-function eri_hess_cross(bset::BasisSet, p, q, r, s, posA::Int, posB::Int)
-    swp = posA > posB
-    a, b = swp ? (posB, posA) : (posA, posB)
+@doc (@doc ∇2ERI_2e4c_μμ!)
+function ∇2ERI_2e4c_μλ!(out, BS::BasisSet{LCint}, i::Int, j::Int, k::Int, l::Int)
+    lib = BS.lib
+    cint2e_ip1ip2_sph!(out, @SVector(Cint[i-1, j-1, k-1, l-1]),
+                       lib.atm, lib.natm, lib.bas, lib.nbas, lib.env)
+    return out
+end
 
-    d = if (a, b) == (1, 2)
-        eri_hess_kernel(cint2e_ipvip1_sph!, bset, p, q, r, s)
-    elseif (a, b) == (3, 4)
-        raw = eri_hess_kernel(cint2e_ipvip1_sph!, bset, r, s, p, q)
-        permutedims(raw, (3, 4, 1, 2, 5, 6))
-    elseif (a, b) == (1, 3)
-        eri_hess_kernel(cint2e_ip1ip2_sph!, bset, p, q, r, s)
-    elseif (a, b) == (1, 4)
-        raw = eri_hess_kernel(cint2e_ip1ip2_sph!, bset, p, q, s, r)
-        permutedims(raw, (1, 2, 4, 3, 5, 6))
-    elseif (a, b) == (2, 3)
-        raw = eri_hess_kernel(cint2e_ip1ip2_sph!, bset, q, p, r, s)
-        permutedims(raw, (2, 1, 3, 4, 5, 6))
-    elseif (a, b) == (2, 4)
-        raw = eri_hess_kernel(cint2e_ip1ip2_sph!, bset, q, p, s, r)
-        permutedims(raw, (2, 1, 4, 3, 5, 6))
+# Accumulate a raw libcint block into `out`, folding both permutations into
+# the index expression rather than materializing a transposed copy.
+#
+#   W      compile-time 4-tuple: raw axis n carries block axis W[n]. So a
+#          kernel called with shells (q,p,r,s) has W = (2,1,3,4).
+#   dswap  final derivative-axis orientation. libcint always emits (q,p);
+#          `false` corrects it to (p,q), `true` leaves it (used when
+#          posA > posB, where mixed partials commute).
+@inline function _acc4c!(out, bufv, N::NTuple{4,Int}, ::Val{W}, dswap::Bool) where W
+    D1 = N[W[1]]; D2 = N[W[2]]; D3 = N[W[3]]; D4 = N[W[4]]
+    n = D1*D2*D3*D4
+    s2 = D1; s3 = D1*D2; s4 = D1*D2*D3
+    @inbounds for q = 1:3, p = 1:3
+        x = dswap ? p : q
+        y = dswap ? q : p
+        od = n*(x-1) + 3n*(y-1)
+        for d = 1:N[4], c = 1:N[3], b = 1:N[2], a = 1:N[1]
+            t = (a, b, c, d)
+            li = t[W[1]] + s2*(t[W[2]]-1) + s3*(t[W[3]]-1) + s4*(t[W[4]]-1)
+            out[a,b,c,d,p,q] += bufv[od + li]
+        end
+    end
+    return out
+end
+
+# One (posA,posB) placement accumulated into `out`. Positions 1..4 map to the
+# four shell arguments (i,j,k,l). Replaces the former
+# former same/cross helper pair *and* their permutedims!-based scratch twins:
+# one implementation now serves both the allocating and preallocated entry
+# points, so the placement algebra exists in exactly one place.
+@inline function _∇24c_place!(out, bufv, BS, i, j, k, l, N::NTuple{4,Int},
+                              posA::Int, posB::Int)
+    if posA == posB
+        if posA == 1
+            ∇2ERI_2e4c_μμ!(bufv, BS, i, j, k, l); _acc4c!(out, bufv, N, Val((1,2,3,4)), false)
+        elseif posA == 2
+            ∇2ERI_2e4c_μμ!(bufv, BS, j, i, k, l); _acc4c!(out, bufv, N, Val((2,1,3,4)), false)
+        elseif posA == 3
+            ∇2ERI_2e4c_μμ!(bufv, BS, k, l, i, j); _acc4c!(out, bufv, N, Val((3,4,1,2)), false)
+        else
+            ∇2ERI_2e4c_μμ!(bufv, BS, l, k, i, j); _acc4c!(out, bufv, N, Val((4,3,1,2)), false)
+        end
     else
-        throw(ArgumentError("unexpected position pair ($a,$b)"))
+        swp = posA > posB
+        a, b = swp ? (posB, posA) : (posA, posB)
+        if (a, b) == (1, 2)
+            ∇2ERI_2e4c_μν!(bufv, BS, i, j, k, l); _acc4c!(out, bufv, N, Val((1,2,3,4)), swp)
+        elseif (a, b) == (3, 4)
+            ∇2ERI_2e4c_μν!(bufv, BS, k, l, i, j); _acc4c!(out, bufv, N, Val((3,4,1,2)), swp)
+        elseif (a, b) == (1, 3)
+            ∇2ERI_2e4c_μλ!(bufv, BS, i, j, k, l); _acc4c!(out, bufv, N, Val((1,2,3,4)), swp)
+        elseif (a, b) == (1, 4)
+            ∇2ERI_2e4c_μλ!(bufv, BS, i, j, l, k); _acc4c!(out, bufv, N, Val((1,2,4,3)), swp)
+        elseif (a, b) == (2, 3)
+            ∇2ERI_2e4c_μλ!(bufv, BS, j, i, k, l); _acc4c!(out, bufv, N, Val((2,1,3,4)), swp)
+        else # (2,4)
+            ∇2ERI_2e4c_μλ!(bufv, BS, j, i, l, k); _acc4c!(out, bufv, N, Val((2,1,4,3)), swp)
+        end
     end
-
-    # d(posB,posA)[...,x,y] = d(posA,posB)[...,y,x] (mixed partials commute)
-    return swp ? permutedims(d, (1, 2, 3, 4, 6, 5)) : d
-end
-
-# Scratch-buffer core for `eri_hess_cross` -- `buf`/`t1`/`t2` are caller-owned
-# flat `Vector{Cdouble}` scratch (each sized `>= 9*Nmax^4`), `shls` a reused
-# `Vector{Cint}` of length 4. Mirrors the allocating version's branch logic
-# and permutation specs exactly (mechanical `permutedims`->`permutedims!`
-# substitution, verified numerically against it -- see this file's test
-# coverage), just tracking which of `t1`/`t2` currently holds the live result
-# so the final (posA>posB) swap never targets its own source in place.
-function eri_hess_cross!(buf::Vector{Cdouble}, t1::Vector{Cdouble}, t2::Vector{Cdouble}, shls::Vector{Cint},
-                          bset::BasisSet, p, q, r, s, posA::Int, posB::Int)
-    swp = posA > posB
-    a, b = swp ? (posB, posA) : (posA, posB)
-    Np, Nq, Nr, Ns = num_basis.(bset.shells[[p, q, r, s]])
-    n = Np * Nq * Nr * Ns * 9
-
-    d, dbuf = if (a, b) == (1, 2)
-        (eri_hess_kernel!(buf, t1, shls, cint2e_ipvip1_sph!, bset, p, q, r, s), t1)
-    elseif (a, b) == (3, 4)
-        raw = eri_hess_kernel!(buf, t1, shls, cint2e_ipvip1_sph!, bset, r, s, p, q)
-        dest = reshape(view(t2, 1:n), Np, Nq, Nr, Ns, 3, 3)
-        permutedims!(dest, raw, (3, 4, 1, 2, 5, 6))
-        (dest, t2)
-    elseif (a, b) == (1, 3)
-        (eri_hess_kernel!(buf, t1, shls, cint2e_ip1ip2_sph!, bset, p, q, r, s), t1)
-    elseif (a, b) == (1, 4)
-        raw = eri_hess_kernel!(buf, t1, shls, cint2e_ip1ip2_sph!, bset, p, q, s, r)
-        dest = reshape(view(t2, 1:n), Np, Nq, Nr, Ns, 3, 3)
-        permutedims!(dest, raw, (1, 2, 4, 3, 5, 6))
-        (dest, t2)
-    elseif (a, b) == (2, 3)
-        raw = eri_hess_kernel!(buf, t1, shls, cint2e_ip1ip2_sph!, bset, q, p, r, s)
-        dest = reshape(view(t2, 1:n), Np, Nq, Nr, Ns, 3, 3)
-        permutedims!(dest, raw, (2, 1, 3, 4, 5, 6))
-        (dest, t2)
-    elseif (a, b) == (2, 4)
-        raw = eri_hess_kernel!(buf, t1, shls, cint2e_ip1ip2_sph!, bset, q, p, s, r)
-        dest = reshape(view(t2, 1:n), Np, Nq, Nr, Ns, 3, 3)
-        permutedims!(dest, raw, (2, 1, 4, 3, 5, 6))
-        (dest, t2)
-    else
-        throw(ArgumentError("unexpected position pair ($a,$b)"))
-    end
-
-    if swp
-        other = dbuf === t1 ? t2 : t1
-        dest = reshape(view(other, 1:n), Np, Nq, Nr, Ns, 3, 3)
-        permutedims!(dest, d, (1, 2, 3, 4, 6, 5))
-        return dest
-    end
-    return d
-end
-
-# Same-shell second derivative: both derivatives land on the shell at position
-# posK (1..4). Returned in (p,q,r,s) AO-axis order.
-function eri_hess_same(bset::BasisSet, p, q, r, s, posK::Int)
-    if posK == 1
-        eri_hess_kernel(cint2e_ipip1_sph!, bset, p, q, r, s)
-    elseif posK == 2
-        raw = eri_hess_kernel(cint2e_ipip1_sph!, bset, q, p, r, s)
-        permutedims(raw, (2, 1, 3, 4, 5, 6))
-    elseif posK == 3
-        raw = eri_hess_kernel(cint2e_ipip1_sph!, bset, r, s, p, q)
-        permutedims(raw, (3, 4, 1, 2, 5, 6))
-    elseif posK == 4
-        raw = eri_hess_kernel(cint2e_ipip1_sph!, bset, s, r, p, q)
-        permutedims(raw, (3, 4, 2, 1, 5, 6))
-    else
-        throw(ArgumentError("posK must be 1..4"))
-    end
-end
-
-# Scratch-buffer core for `eri_hess_same`, same relationship to it as
-# `eri_hess_cross!` has to `eri_hess_cross`.
-function eri_hess_same!(buf::Vector{Cdouble}, t1::Vector{Cdouble}, t2::Vector{Cdouble}, shls::Vector{Cint},
-                         bset::BasisSet, p, q, r, s, posK::Int)
-    Np, Nq, Nr, Ns = num_basis.(bset.shells[[p, q, r, s]])
-    n = Np * Nq * Nr * Ns * 9
-    if posK == 1
-        return eri_hess_kernel!(buf, t1, shls, cint2e_ipip1_sph!, bset, p, q, r, s)
-    elseif posK == 2
-        raw = eri_hess_kernel!(buf, t1, shls, cint2e_ipip1_sph!, bset, q, p, r, s)
-        dest = reshape(view(t2, 1:n), Np, Nq, Nr, Ns, 3, 3)
-        permutedims!(dest, raw, (2, 1, 3, 4, 5, 6))
-        return dest
-    elseif posK == 3
-        raw = eri_hess_kernel!(buf, t1, shls, cint2e_ipip1_sph!, bset, r, s, p, q)
-        dest = reshape(view(t2, 1:n), Np, Nq, Nr, Ns, 3, 3)
-        permutedims!(dest, raw, (3, 4, 1, 2, 5, 6))
-        return dest
-    elseif posK == 4
-        raw = eri_hess_kernel!(buf, t1, shls, cint2e_ipip1_sph!, bset, s, r, p, q)
-        dest = reshape(view(t2, 1:n), Np, Nq, Nr, Ns, 3, 3)
-        permutedims!(dest, raw, (3, 4, 2, 1, 5, 6))
-        return dest
-    else
-        throw(ArgumentError("posK must be 1..4"))
-    end
+    return out
 end
 
 """
@@ -223,7 +176,8 @@ once outside a hot loop.
 function ∇2ERI_2e4c(BS::BasisSet, iA::Int, iB::Int, i::Int, j::Int, k::Int, l::Int)
     Xflag = on_atom_flags(BS, iA, i, j, k, l)
     Yflag = on_atom_flags(BS, iB, i, j, k, l)
-    Ni, Nj, Nk, Nl = num_basis.(BS.shells[[i, j, k, l]])
+    Ni = num_basis(BS.shells[i]); Nj = num_basis(BS.shells[j])
+    Nk = num_basis(BS.shells[k]); Nl = num_basis(BS.shells[l])
     out = zeros(Ni, Nj, Nk, Nl, 3, 3)
     (!any(Xflag) || !any(Yflag) || (iA == iB && all(Xflag))) && return out
     return ∇2ERI_2e4c!(out, BS, Xflag, Yflag, i, j, k, l)
@@ -240,51 +194,49 @@ function ∇2ERI_2e4c!(out, BS::BasisSet, iA::Int, iB::Int, i::Int, j::Int, k::I
 end
 
 function ∇2ERI_2e4c(BS::BasisSet, Xflag::NTuple{4,Bool}, Yflag::NTuple{4,Bool}, i::Int, j::Int, k::Int, l::Int)
-    Ni, Nj, Nk, Nl = num_basis.(BS.shells[[i, j, k, l]])
+    Ni = num_basis(BS.shells[i]); Nj = num_basis(BS.shells[j])
+    Nk = num_basis(BS.shells[k]); Nl = num_basis(BS.shells[l])
     out = zeros(Ni, Nj, Nk, Nl, 3, 3)
     return ∇2ERI_2e4c!(out, BS, Xflag, Yflag, i, j, k, l)
 end
 
 function ∇2ERI_2e4c!(out, BS::BasisSet, Xflag::NTuple{4,Bool}, Yflag::NTuple{4,Bool}, i::Int, j::Int, k::Int, l::Int)
-    Ni, Nj, Nk, Nl = num_basis.(BS.shells[[i, j, k, l]])
-    Nijkl = Ni * Nj * Nk * Nl
-    buf = zeros(Cdouble, 9 * Nijkl)
-    t1 = zeros(Cdouble, 9 * Nijkl)
-    t2 = zeros(Cdouble, 9 * Nijkl)
-    shls = zeros(Cint, 4)
-    return ∇2ERI_2e4c!(out, BS, Xflag, Yflag, i, j, k, l, buf, t1, t2, shls)
+    Ni = num_basis(BS.shells[i]); Nj = num_basis(BS.shells[j])
+    Nk = num_basis(BS.shells[k]); Nl = num_basis(BS.shells[l])
+    buf = Vector{Cdouble}(undef, 9 * Ni * Nj * Nk * Nl)
+    return ∇2ERI_2e4c!(out, BS, Xflag, Yflag, i, j, k, l, buf)
 end
 
 """
-    ∇2ERI_2e4c!(out, BS::BasisSet, Xflag, Yflag, i, j, k, l, buf, t1, t2, shls)
+    ∇2ERI_2e4c!(out, BS::BasisSet, Xflag, Yflag, i, j, k, l, buf)
 
-Scratch-buffer-accepting core: `buf`/`t1`/`t2` (each `>= 9*Nmax^4`, `Nmax`
-= the largest `num_basis` over any shell the caller will ever pass) and
-`shls` (length 4) are caller-owned and reused across every call instead of
-allocated fresh. Not thread-safe to share: each concurrent caller (e.g.
-each worker task) needs its own scratch buffers.
+Scratch-buffer-accepting core: `buf` (sized `>= 9*Nmax^4`, `Nmax` = the
+largest `num_basis` over any shell the caller will ever pass) is
+caller-owned and reused across every call instead of allocated fresh --
+zero-allocation, for callers in a hot per-quartet loop. Not thread-safe to
+share: each concurrent caller (e.g. each worker task) needs its own `buf`.
 """
 function ∇2ERI_2e4c!(out, BS::BasisSet, Xflag::NTuple{4,Bool}, Yflag::NTuple{4,Bool}, i::Int, j::Int, k::Int, l::Int,
-                      buf::Vector{Cdouble}, t1::Vector{Cdouble}, t2::Vector{Cdouble}, shls::Vector{Cint})
-    # This loop calls eri_hess_same!/eri_hess_cross! up to 16 times per
-    # shell quartet (4x4 posA/posB combinations, vs. the gradient's 4
-    # branches), so the old allocating path cost proportionally more GC
-    # churn per call -- see Gradients/TwoElectronGrad.jl's ∇ERI_2e4c! for
-    # the analogous gradient-side fix.
-    Ni, Nj, Nk, Nl = num_basis.(BS.shells[[i, j, k, l]])
+                      buf::Vector{Cdouble})
+    # Up to 16 placements per shell quartet (4x4 posA/posB, against the
+    # gradient's 4 branches), so anything allocated per placement is
+    # multiplied accordingly -- this sits in Fermi.jl's Hessian inner loop.
+    Ni = num_basis(BS.shells[i]); Nj = num_basis(BS.shells[j])
+    Nk = num_basis(BS.shells[k]); Nl = num_basis(BS.shells[l])
     if size(out) != (Ni, Nj, Nk, Nl, 3, 3)
         throw(DimensionMismatch("Size of the output array needs to be ($Ni, $Nj, $Nk, $Nl, 3, 3)."))
     end
 
-    out .= 0.0
-
+    fill!(out, 0.0)
+    N = (Ni, Nj, Nk, Nl)
+    # `buf` is passed whole rather than as a `view(buf, 1:n)`: libcint writes
+    # only the first n entries and `_acc4c!` indexes linearly, so the view
+    # bought nothing and cost a SubArray allocation per call.
     for posA in 1:4
         Xflag[posA] || continue
         for posB in 1:4
             Yflag[posB] || continue
-            d = posA == posB ? eri_hess_same!(buf, t1, t2, shls, BS, i, j, k, l, posA) :
-                                eri_hess_cross!(buf, t1, t2, shls, BS, i, j, k, l, posA, posB)
-            out .+= d
+            _∇24c_place!(out, buf, BS, i, j, k, l, N, posA, posB)
         end
     end
 

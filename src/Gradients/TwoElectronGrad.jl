@@ -17,6 +17,17 @@ function ∇ERI_2e4c(BS::BasisSet, iA)
     return ∇ERI_2e4c!(out, BS, iA)
 end
 
+"""
+    ∇ERI_2e4c!(out, BS::BasisSet, iA)
+
+Mutating counterpart of [`∇ERI_2e4c`](@ref): writes the dense
+`nbas × nbas × nbas × nbas × 3` gradient into the caller-supplied `out`
+instead of allocating it.
+
+For a single shell quartet see
+[`∇ERI_2e4c(BS,iA,i,j,k,l)`](@ref ∇ERI_2e4c(::BasisSet, ::Int, ::Int, ::Int, ::Int, ::Int));
+for large basis sets prefer [`∇sparseERI_2e4c`](@ref).
+"""
 function ∇ERI_2e4c!(out, BS::BasisSet, iA)
 
     if size(out) != (BS.nbas, BS.nbas, BS.nbas, BS.nbas, 3)
@@ -202,6 +213,36 @@ end
 # [ij|kl']` formula is already well-defined for any `(i,j,k,l)` on its own.
 
 """
+    ∇ERI_2e4c_μ!(out, BS::BasisSet{LCint}, i::Int, j::Int, k::Int, l::Int)
+
+Libcint call for the 4-center ERI gradient block differentiated with respect
+to shell `i` (the "μ" shell), for shells `i,j,k,l` of `BS`, already
+sign-flipped to the nuclear-coordinate convention -- the direct analogue of
+[`∇overlap_μ!`](@ref), and the only place this file touches libcint.
+
+Always differentiates its FIRST shell argument. To differentiate any other
+center, pass that shell first and permute the result, exactly as the 1e
+gradients do with `∇overlap_μ!(out, BS, j, i)`. `out` comes back in
+libcint's raw `(Ni,Nj,Nk,Nl,3)` layout for the shell order **as passed**, so
+a permuted call returns a permuted block -- see `∇ERI_2e4c!` for the four
+index maps that fold those permutations into the scatter.
+
+Handles the 1-based to 0-based shell index conversion and passes the indices
+as an `SVector`, so no caller-owned `shls` buffer is needed and the call is
+allocation-free. `out` may be a contiguous view (e.g. `view(buf, 1:3*Nijkl)`).
+
+> No bounds checking, no zero-block skipping, no output-size validation --
+> same segfault/heap-corruption risks as [`∇overlap_μ!`](@ref).
+"""
+function ∇ERI_2e4c_μ!(out, BS::BasisSet{LCint}, i::Int, j::Int, k::Int, l::Int)
+    lib = BS.lib
+    cint2e_ip1_sph!(out, @SVector(Cint[i-1, j-1, k-1, l-1]),
+                    lib.atm, lib.natm, lib.bas, lib.nbas, lib.env)
+    out .*= -1.0
+    return out
+end
+
+"""
     ∇ERI_2e4c(BS::BasisSet, iA::Int, i::Int, j::Int, k::Int, l::Int)
     ∇ERI_2e4c(BS::BasisSet, on_A::NTuple{4,Bool}, i::Int, j::Int, k::Int, l::Int)
 
@@ -242,31 +283,31 @@ end
 
 function ∇ERI_2e4c!(out, BS::BasisSet, on_A::NTuple{4,Bool}, i::Int, j::Int, k::Int, l::Int)
     Ni, Nj, Nk, Nl = num_basis(BS.shells[i]), num_basis(BS.shells[j]), num_basis(BS.shells[k]), num_basis(BS.shells[l])
-    Nijkl = Ni*Nj*Nk*Nl
-    buf = zeros(Cdouble, 3*Nijkl)
-    tmp = zeros(Cdouble, 3*Nijkl)
-    shls = zeros(Cint, 4)
-    return ∇ERI_2e4c!(out, BS, on_A, i, j, k, l, buf, tmp, shls)
+    buf = Vector{Cdouble}(undef, 3*Ni*Nj*Nk*Nl)
+    return ∇ERI_2e4c!(out, BS, on_A, i, j, k, l, buf)
 end
 
 """
-    ∇ERI_2e4c!(out, BS::BasisSet, on_A::NTuple{4,Bool}, i, j, k, l, buf, tmp, shls)
+    ∇ERI_2e4c!(out, BS::BasisSet, on_A::NTuple{4,Bool}, i, j, k, l, buf)
 
 Scratch-buffer-accepting core: identical math to the 7-argument form above,
-but takes caller-owned `buf`/`tmp` (each sized `>= 3*Nmax^4`, `Nmax` = the
-largest `num_basis` over any shell the caller will ever pass) and `shls`
-(sized 4) instead of allocating them fresh every call -- zero-allocation,
-for callers in a hot per-quartet loop. Not thread-safe to share: each
-concurrent caller (e.g. each worker task) needs its own `buf`/`tmp`/`shls`.
+but takes a caller-owned `buf` (sized `>= 3*Nmax^4`, `Nmax` = the largest
+`num_basis` over any shell the caller will ever pass) instead of allocating
+one fresh every call -- zero-allocation, for callers in a hot per-quartet
+loop. Not thread-safe to share: each concurrent caller (e.g. each worker
+task) needs its own `buf`.
 """
 function ∇ERI_2e4c!(out, BS::BasisSet, on_A::NTuple{4,Bool}, i::Int, j::Int, k::Int, l::Int,
-                     buf::Vector{Cdouble}, tmp::Vector{Cdouble}, shls::Vector{Cint})
+                     buf::Vector{Cdouble})
     # Exists because this sits in the innermost loop of Fermi.jl's
     # integral-direct gradient (called once per (atom, canonical-quartet)
     # visit, millions of times for a real molecule) -- profiling found the
-    # allocating form costing ~1.3 KB/call (a fresh buf, plus one
-    # allocating permutedims per non-first branch), several GB of GC churn
-    # over a full gradient. permutedims! (in-place) replaces permutedims.
+    # allocating form costing ~1.3 KB/call, several GB of GC churn over a
+    # full gradient. Note that permutedims! is NOT a fix for that: despite
+    # being the in-place form it still allocates ~384 B per call, so a
+    # quartet hitting two transposing branches leaked 768 B even with
+    # caller-owned buffers. Folding the permutations into the index
+    # expressions below is what actually makes this allocation-free.
 
     Ni, Nj, Nk, Nl = num_basis(BS.shells[i]), num_basis(BS.shells[j]), num_basis(BS.shells[k]), num_basis(BS.shells[l])
 
@@ -274,48 +315,63 @@ function ∇ERI_2e4c!(out, BS::BasisSet, on_A::NTuple{4,Bool}, i::Int, j::Int, k
         throw(DimensionMismatch("Size of the output array needs to be ($Ni, $Nj, $Nk, $Nl, 3)."))
     end
 
-    out .= 0.0
+    fill!(out, 0.0)
 
     Nijkl = Ni*Nj*Nk*Nl
-    lib = BS.lib
     bufv = view(buf, 1:3*Nijkl)
-    tmpv = view(tmp, 1:3*Nijkl)
 
-    # [i'j|kl]
+    # Every branch is the same primitive, ∇ERI_2e4c_μ! -- which always
+    # differentiates its first shell argument -- called with the shell to be
+    # differentiated moved to the front. The resulting block therefore comes
+    # back permuted, and each branch folds that permutation into the index
+    # expression rather than materializing a transposed copy.
+    #
+    # Index maps follow permutedims' convention, dest[j...] =
+    # src[j[invperm(perm)]...], with the raw block laid out in the shell order
+    # that branch passed to libcint.
+
+    # [i'j|kl] -- raw (Ni,Nj,Nk,Nl,3), no permutation
     if on_A[1]
-        shls[1] = i-1; shls[2] = j-1; shls[3] = k-1; shls[4] = l-1
-        cint2e_ip1_sph!(bufv, shls, lib.atm, lib.natm, lib.bas, lib.nbas, lib.env)
-        out .-= reshape(bufv, Ni, Nj, Nk, Nl, 3)
+        ∇ERI_2e4c_μ!(bufv, BS, i, j, k, l)
+        @inbounds for q = 1:3
+            oq = Nijkl*(q-1)
+            for d = 1:Nl, c = 1:Nk, b = 1:Nj, a = 1:Ni
+                out[a,b,c,d,q] += bufv[oq + a + Ni*(b-1) + Ni*Nj*(c-1) + Ni*Nj*Nk*(d-1)]
+            end
+        end
     end
 
-    # [ij'|kl]
+    # [ij'|kl] -- raw (Nj,Ni,Nk,Nl,3), perm (2,1,3,4,5)
     if on_A[2]
-        shls[1] = j-1; shls[2] = i-1; shls[3] = k-1; shls[4] = l-1
-        cint2e_ip1_sph!(bufv, shls, lib.atm, lib.natm, lib.bas, lib.nbas, lib.env)
-        ∇q = reshape(bufv, Nj, Ni, Nk, Nl, 3)
-        dest = reshape(tmpv, Ni, Nj, Nk, Nl, 3)
-        permutedims!(dest, ∇q, (2,1,3,4,5))
-        out .-= dest
+        ∇ERI_2e4c_μ!(bufv, BS, j, i, k, l)
+        @inbounds for q = 1:3
+            oq = Nijkl*(q-1)
+            for d = 1:Nl, c = 1:Nk, b = 1:Nj, a = 1:Ni
+                out[a,b,c,d,q] += bufv[oq + b + Nj*(a-1) + Nj*Ni*(c-1) + Nj*Ni*Nk*(d-1)]
+            end
+        end
     end
 
-    # [ij|k'l]
+    # [ij|k'l] -- raw (Nk,Nl,Ni,Nj,3), perm (3,4,1,2,5)
     if on_A[3]
-        shls[1] = k-1; shls[2] = l-1; shls[3] = i-1; shls[4] = j-1
-        cint2e_ip1_sph!(bufv, shls, lib.atm, lib.natm, lib.bas, lib.nbas, lib.env)
-        ∇q = reshape(bufv, Nk, Nl, Ni, Nj, 3)
-        dest = reshape(tmpv, Ni, Nj, Nk, Nl, 3)
-        permutedims!(dest, ∇q, (3,4,1,2,5))
-        out .-= dest
+        ∇ERI_2e4c_μ!(bufv, BS, k, l, i, j)
+        @inbounds for q = 1:3
+            oq = Nijkl*(q-1)
+            for d = 1:Nl, c = 1:Nk, b = 1:Nj, a = 1:Ni
+                out[a,b,c,d,q] += bufv[oq + c + Nk*(d-1) + Nk*Nl*(a-1) + Nk*Nl*Ni*(b-1)]
+            end
+        end
     end
 
-    # [ij|kl']
+    # [ij|kl'] -- raw (Nl,Nk,Ni,Nj,3), perm (3,4,2,1,5)
     if on_A[4]
-        shls[1] = l-1; shls[2] = k-1; shls[3] = i-1; shls[4] = j-1
-        cint2e_ip1_sph!(bufv, shls, lib.atm, lib.natm, lib.bas, lib.nbas, lib.env)
-        ∇q = reshape(bufv, Nl, Nk, Ni, Nj, 3)
-        dest = reshape(tmpv, Ni, Nj, Nk, Nl, 3)
-        permutedims!(dest, ∇q, (3,4,2,1,5))
-        out .-= dest
+        ∇ERI_2e4c_μ!(bufv, BS, l, k, i, j)
+        @inbounds for q = 1:3
+            oq = Nijkl*(q-1)
+            for d = 1:Nl, c = 1:Nk, b = 1:Nj, a = 1:Ni
+                out[a,b,c,d,q] += bufv[oq + d + Nl*(c-1) + Nl*Nk*(a-1) + Nl*Nk*Ni*(b-1)]
+            end
+        end
     end
 
     return out
@@ -426,7 +482,11 @@ function ∇sparseERI_2e4c(BS::BasisSet, iA, cutoff = 1e-12; ij_vals = nothing, 
     ∇y = sizehint!(Cdouble[], size_ub)
     ∇z = sizehint!(Cdouble[], size_ub)
 
-    buf = zeros(Cdouble, 3*Nmax^4)
+    buf = Vector{Cdouble}(undef, 3*Nmax^4)
+    # Block staging area for ∇ERI_2e4c!; contiguous so the emit loop can index
+    # it linearly. `tmp`/`shls` are ignored by that core (see its docstring)
+    # but are still positional, so pass empty vectors.
+    blkbuf = Vector{Cdouble}(undef, 3*Nmax^4)
 
     # i,j,k,l => Shell indexes starting at one
     # I, J, K, L => AO indexes starting at one
@@ -444,38 +504,21 @@ function ∇sparseERI_2e4c(BS::BasisSet, iA, cutoff = 1e-12; ij_vals = nothing, 
             Nijkl = Nijk*Nl
             ioff, joff, koff, loff = ao_offset[i], ao_offset[j], ao_offset[k], ao_offset[l]
 
-            # NOTE: Using loops instead of array operations could make this more efficient
-            # Compute ERI
-            bufx = zeros(Cdouble, Ni, Nj, Nk, Nl)
-            bufy = zeros(Cdouble, Ni, Nj, Nk, Nl)
-            bufz = zeros(Cdouble, Ni, Nj, Nk, Nl)
-            if in_A[i]
-                cint2e_ip1_sph!(buf, @SVector([i,j,k,l]), BS.lib)
-                bufx += reshape(buf[1:Nijkl], Ni, Nj, Nk, Nl)
-                bufy += reshape(buf[Nijkl+1:2*Nijkl], Ni, Nj, Nk, Nl)
-                bufz += reshape(buf[2*Nijkl+1:3*Nijkl], Ni, Nj, Nk, Nl)
-            end
-
-            if in_A[j]
-                cint2e_ip1_sph!(buf, @SVector([j,i,k,l]), BS.lib)
-                bufx += permutedims(reshape(buf[1:Nijkl],           Nj, Ni, Nk, Nl), (2,1,3,4))
-                bufy += permutedims(reshape(buf[Nijkl+1:2*Nijkl],   Nj, Ni, Nk, Nl), (2,1,3,4))
-                bufz += permutedims(reshape(buf[2*Nijkl+1:3*Nijkl], Nj, Ni, Nk, Nl), (2,1,3,4))
-            end
-
-            if in_A[k]
-                cint2e_ip1_sph!(buf, @SVector([k,l,i,j]), BS.lib)
-                bufx += permutedims(reshape(buf[1:Nijkl],           Nk, Nl, Ni, Nj), (3,4,1,2))
-                bufy += permutedims(reshape(buf[Nijkl+1:2*Nijkl],   Nk, Nl, Ni, Nj), (3,4,1,2))
-                bufz += permutedims(reshape(buf[2*Nijkl+1:3*Nijkl], Nk, Nl, Ni, Nj), (3,4,1,2))
-            end
-
-            if in_A[l]
-                cint2e_ip1_sph!(buf, @SVector([l,k,i,j]), BS.lib)
-                bufx += permutedims(reshape(buf[1:Nijkl],           Nl, Nk, Ni, Nj), (3,4,2,1))
-                bufy += permutedims(reshape(buf[Nijkl+1:2*Nijkl],   Nl, Nk, Ni, Nj), (3,4,2,1))
-                bufz += permutedims(reshape(buf[2*Nijkl+1:3*Nijkl], Nl, Nk, Ni, Nj), (3,4,2,1))
-            end
+            # One call to the shared shell-quartet core instead of
+            # re-implementing its four branches here. It writes a
+            # (Ni,Nj,Nk,Nl,3) block into `blkbuf`; because that view is
+            # contiguous, component q of the block occupies the linear range
+            # Nijkl*(q-1)+1 : q*Nijkl, so the emit loop below can index
+            # `blkbuf` directly with the same `is + bjkl` offsets the old
+            # bufx/bufy/bufz used.
+            #
+            # The core already folds libcint's sign flip into ∇ERI_2e4c_μ!,
+            # where the old code here accumulated raw kernel output and
+            # negated at push! time -- hence the pushes below no longer carry
+            # a minus sign.
+            blk = reshape(view(blkbuf, 1:3*Nijkl), Ni, Nj, Nk, Nl, 3)
+            ∇ERI_2e4c!(blk, BS, (in_A[i], in_A[j], in_A[k], in_A[l]),
+                       Int(i), Int(j), Int(k), Int(l), buf)
 
             ### This block aims to retrieve unique elements within buf and map them to AO indexes
             # is, js, ks, ls are indexes within the shell e.g. for a p shell is = (1, 2, 3)
@@ -512,9 +555,10 @@ function ∇sparseERI_2e4c(BS::BasisSet, iA, cutoff = 1e-12; ij_vals = nothing, 
 
                             self_paired && IJ > KL && continue
 
-                            push!(∇x, -bufx[is + bjkl])
-                            push!(∇y, -bufy[is + bjkl])
-                            push!(∇z, -bufz[is + bjkl])
+                            n = is + bjkl
+                            push!(∇x, blkbuf[n])
+                            push!(∇y, blkbuf[Nijkl + n])
+                            push!(∇z, blkbuf[2*Nijkl + n])
                             push!(indexes, KL ≥ IJ ? (I, J, K, L) : (K, L, I, J))
                         end
                     end
@@ -543,6 +587,59 @@ function ∇ERI_2e3c(BS1::BasisSet, BS2::BasisSet, iA)
     return ∇ERI_2e3c!(out, BS1, BS2, iA)
 end
 
+"""
+    ∇ERI_2e3c_μ!(out, BS::BasisSet{LCint}, i::Int, j::Int, k::Int)
+    ∇ERI_2e3c_P!(out, BS::BasisSet{LCint}, i::Int, j::Int, k::Int)
+
+Libcint calls for the 3-center `(μν|P)` gradient block, sign-flipped to the
+nuclear-coordinate convention -- the analogues of [`∇overlap_μ!`](@ref) for
+this integral.
+
+`BS` is the **merged** basis (regular shells followed by auxiliary ones, as
+`ERI_2e3c!(out, BS, i, j, k)` also expects), so an auxiliary shell `k` is
+addressed as `k + BS1.nshells`.
+
+Two primitives are needed rather than one, because the three centers do not
+live in interchangeable slots: `μ` and `ν` are the two shells of the bra,
+while `P` sits alone in the ket. `∇ERI_2e3c_μ!` (libcint's `ip1`)
+differentiates the FIRST shell argument, so `ν` is reached by swapping the
+first two arguments -- the same trick used throughout this package.
+`∇ERI_2e3c_P!` (libcint's `ip2`) differentiates the third center; no
+argument permutation can express it in terms of `ip1`.
+
+`out` comes back in libcint's raw layout for the shell order as passed, and
+may be a contiguous view.
+
+> No bounds checking or output-size validation -- same risks as
+> [`∇overlap_μ!`](@ref).
+"""
+function ∇ERI_2e3c_μ!(out, BS::BasisSet{LCint}, i::Int, j::Int, k::Int)
+    lib = BS.lib
+    cint3c2e_ip1_sph!(out, @SVector(Cint[i-1, j-1, k-1]),
+                      lib.atm, lib.natm, lib.bas, lib.nbas, lib.env)
+    out .*= -1.0
+    return out
+end
+
+function ∇ERI_2e3c_P!(out, BS::BasisSet{LCint}, i::Int, j::Int, k::Int)
+    lib = BS.lib
+    cint3c2e_ip2_sph!(out, @SVector(Cint[i-1, j-1, k-1]),
+                      lib.atm, lib.natm, lib.bas, lib.nbas, lib.env)
+    out .*= -1.0
+    return out
+end
+
+"""
+    ∇ERI_2e3c!(out, BS1::BasisSet, BS2::BasisSet, iA; Bmerged=nothing)
+
+Mutating counterpart of [`∇ERI_2e3c`](@ref): writes the dense
+`BS1.nbas × BS1.nbas × BS2.nbas × 3` gradient into `out` instead of
+allocating it. `out` is zeroed first, so a reused buffer is safe.
+
+`Bmerged` depends only on `BS1`/`BS2`, never on `iA`. Callers looping over
+atoms should build it once and pass it in -- it is a small fraction of the
+runtime but over half of this routine's allocation.
+"""
 function ∇ERI_2e3c!(out, BS1::BasisSet, BS2::BasisSet, iA; Bmerged::Union{Nothing,BasisSet}=nothing)
 
     # Bmerged depends only on BS1/BS2, never on iA -- callers looping over
@@ -550,9 +647,7 @@ function ∇ERI_2e3c!(out, BS1::BasisSet, BS2::BasisSet, iA; Bmerged::Union{Noth
     # pass it in via this keyword instead of paying for a fresh BasisSet
     # construction on every call.
     if Bmerged === nothing
-        atoms = unique(vcat(BS1.atoms, BS2.atoms))
-        basis = vcat(BS1.shells, BS2.shells)
-        Bmerged = BasisSet("$(BS1.name*BS2.name)", atoms, basis)
+        Bmerged = merge_basis(BS1, BS2)
     end
 
     if size(out) != (BS1.nbas, BS1.nbas, BS2.nbas, 3)
@@ -561,29 +656,12 @@ function ∇ERI_2e3c!(out, BS1::BasisSet, BS2::BasisSet, iA; Bmerged::Union{Noth
 
     A = BS1.atoms[iA]
 
-    # Shell indexes for basis 1 in the atom A
-    Ashells1 = Int[]
-    notAshells1 = Int[]
-    for i in 1:BS1.nshells
-        b = BS1.shells[i]
-        if b.atom == A
-            push!(Ashells1, i)
-        else
-            push!(notAshells1, i)
-        end
-    end
-
-    # Shell indexes for basis 2 in the atom A
-    Ashells2 = Int[]
-    notAshells2 = Int[]
-    for i in 1:BS2.nshells
-        b = BS2.shells[i]
-        if b.atom == A
-            push!(Ashells2, i)
-        else
-            push!(notAshells2, i)
-        end
-    end
+    # Per-shell membership, looked up in O(1) below. Previously this was a
+    # pair of index lists searched with `in`, and the per-triple flags were
+    # built as a Vector literal -- one heap allocation and two linear scans
+    # for every shell triple.
+    onA1 = [BS1.shells[i].atom == A for i in 1:BS1.nshells]
+    onA2 = [BS2.shells[i].atom == A for i in 1:BS2.nshells]
 
     Nvals1 = num_basis.(BS1.shells)
     ao_offset1 = cumsum(Nvals1) .- Nvals1
@@ -593,13 +671,17 @@ function ∇ERI_2e3c!(out, BS1::BasisSet, BS2::BasisSet, iA; Bmerged::Union{Noth
     ao_offset2 = cumsum(Nvals2) .- Nvals2
     Nmax2 = maximum(Nvals2)
 
-    buf = zeros(Cdouble, 3*Nmax1^2*Nmax2)
+    buf = Vector{Cdouble}(undef, 3*Nmax1^2*Nmax2)
+
+    # Blocks where all three shells share atom-membership status are zero and
+    # are skipped below, so `out` must start clean for a reused buffer.
+    fill!(out, 0.0)
 
     for i = 1:BS1.nshells
         for j = i:BS1.nshells # i <= j
             for k = 1:BS2.nshells
 
-                x_in_A = [i in Ashells1, j in Ashells1, k in Ashells2]
+                x_in_A = (onA1[i], onA1[j], onA2[k])
 
                 # If no basis is centered on A, skip
                 # If all basis are centered on A, skip
@@ -611,6 +693,7 @@ function ∇ERI_2e3c!(out, BS1::BasisSet, BS2::BasisSet, iA; Bmerged::Union{Noth
                 Nj = Nvals1[j]
                 Nk = Nvals2[k]
                 Nijk = Ni*Nj*Nk
+                bufv = view(buf, 1:3*Nijk)
 
                 ioff = ao_offset1[i]
                 joff = ao_offset1[j]
@@ -620,40 +703,49 @@ function ∇ERI_2e3c!(out, BS1::BasisSet, BS2::BasisSet, iA; Bmerged::Union{Noth
                 J = (joff+1):(joff+Nj)
                 K = (koff+1):(koff+Nk)
 
-	        # [i'j|k]
+                # Each branch is a primitive call plus a scalar scatter that
+                # folds any index permutation into the write, so there are no
+                # `buf[r]` copies, no permutedims temporaries and no
+                # range-indexed broadcasts.
+                kk = k + BS1.nshells
+
+	        # [i'j|k] -- raw (Ni,Nj,Nk,3), no permutation
                 if x_in_A[1]
-                    cint3c2e_ip1_sph!(buf, @SVector([i,j,k+BS1.nshells]), Bmerged.lib)
-                    for q in 1:3
-                        r = (1+Nijk*(q-1)):(q*Nijk)
-                        ∇q = reshape(buf[r], Int(Ni), Int(Nj), Int(Nk))
-                        out[I,J,K,q] += -∇q
+                    ∇ERI_2e3c_μ!(bufv, Bmerged, i, j, kk)
+                    @inbounds for q = 1:3
+                        oq = Nijk*(q-1)
+                        for c = 1:Nk, b = 1:Nj, a = 1:Ni
+                            out[ioff+a, joff+b, koff+c, q] += bufv[oq + a + Ni*(b-1) + Ni*Nj*(c-1)]
+                        end
                     end
                 end
 
-                # [ij'|k]
+                # [ij'|k] -- swap the bra shells; raw (Nj,Ni,Nk,3)
                 if x_in_A[2]
-                    cint3c2e_ip1_sph!(buf, @SVector([j,i,k+BS1.nshells]), Bmerged.lib)
-                    for q in 1:3
-                        r = (1+Nijk*(q-1)):(q*Nijk)
-                        ∇q = reshape(buf[r], Int(Nj), Int(Ni), Int(Nk))
-                        out[I,J,K,q] += -permutedims(∇q, (2,1,3))
+                    ∇ERI_2e3c_μ!(bufv, Bmerged, j, i, kk)
+                    @inbounds for q = 1:3
+                        oq = Nijk*(q-1)
+                        for c = 1:Nk, b = 1:Nj, a = 1:Ni
+                            out[ioff+a, joff+b, koff+c, q] += bufv[oq + b + Nj*(a-1) + Nj*Ni*(c-1)]
+                        end
                     end
                 end
 
-                # [ij|k']
+                # [ij|k'] -- the ket center, its own kernel; raw (Ni,Nj,Nk,3)
                 if x_in_A[3]
-                    cint3c2e_ip2_sph!(buf, @SVector([i,j,k+BS1.nshells]), Bmerged.lib)
-                    for q in 1:3
-                        r = (1+Nijk*(q-1)):(q*Nijk)
-                        ∇q = reshape(buf[r], Int(Ni), Int(Nj), Int(Nk))
-                        out[I,J,K,q] += -∇q
+                    ∇ERI_2e3c_P!(bufv, Bmerged, i, j, kk)
+                    @inbounds for q = 1:3
+                        oq = Nijk*(q-1)
+                        for c = 1:Nk, b = 1:Nj, a = 1:Ni
+                            out[ioff+a, joff+b, koff+c, q] += bufv[oq + a + Ni*(b-1) + Ni*Nj*(c-1)]
+                        end
                     end
                 end
 
+                # (μν|P) is symmetric under μ<->ν, so mirror the block.
                 if i != j
-                    for q in 1:3
-                        # i,j permutation
-                        out[J, I, K, q] .= permutedims(out[I, J, K, q], (2,1,3))
+                    @inbounds for q = 1:3, c = 1:Nk, b = 1:Nj, a = 1:Ni
+                        out[joff+b, ioff+a, koff+c, q] = out[ioff+a, joff+b, koff+c, q]
                     end
                 end
             end
@@ -678,6 +770,35 @@ function ∇ERI_2e2c(BS::BasisSet, iA)
     return ∇ERI_2e2c!(out, BS, iA)
 end
 
+"""
+    ∇ERI_2e2c_μ!(out, BS::BasisSet{LCint}, i::Int, j::Int)
+
+Libcint call for the 2-center `(P|Q)` gradient block differentiated with
+respect to shell `i`, sign-flipped to the nuclear-coordinate convention --
+the analogue of [`∇overlap_μ!`](@ref) for the DF Coulomb metric.
+
+Differentiates its FIRST shell argument, so `Q` is reached by swapping the
+two arguments, which returns a `(Nj,Ni,3)` block to be transposed in. `out`
+may be a contiguous view.
+
+> No bounds checking or output-size validation -- same risks as
+> [`∇overlap_μ!`](@ref).
+"""
+function ∇ERI_2e2c_μ!(out, BS::BasisSet{LCint}, i::Int, j::Int)
+    lib = BS.lib
+    cint2c2e_ip1_sph!(out, @SVector(Cint[i-1, j-1]),
+                      lib.atm, lib.natm, lib.bas, lib.nbas, lib.env)
+    out .*= -1.0
+    return out
+end
+
+"""
+    ∇ERI_2e2c!(out, BS::BasisSet, iA)
+
+Mutating counterpart of [`∇ERI_2e2c`](@ref): writes the dense
+`nbas × nbas × 3` gradient of the DF Coulomb metric `(P|Q)` into `out`
+instead of allocating it. `out` is zeroed first, so a reused buffer is safe.
+"""
 function ∇ERI_2e2c!(out, BS::BasisSet, iA)
 
     if size(out) != (BS.nbas, BS.nbas, 3)
@@ -702,12 +823,16 @@ function ∇ERI_2e2c!(out, BS::BasisSet, iA)
     ao_offset = cumsum(Nvals) .- Nvals
     Nmax = maximum(Nvals)
 
-    buf = zeros(Cdouble, 3*Nmax^2)
+    buf = Vector{Cdouble}(undef, 3*Nmax^2)
+
+    # Blocks with both shells on A (or both off it) are zero and are skipped
+    # below, so `out` must start clean for a reused buffer.
+    fill!(out, 0.0)
 
     for i = 1:BS.nshells
         for j = i:BS.nshells # i <= j
 
-            x_in_A = [x in Ashells for x = (i,j)]
+            x_in_A = on_atom_flags(BS, iA, i, j)
 
             # If no basis is centered on A, skip
             # If all basis are centered on A, skip
@@ -725,30 +850,34 @@ function ∇ERI_2e2c!(out, BS::BasisSet, iA)
             I = (ioff+1):(ioff+Ni)
             J = (joff+1):(joff+Nj)
 
-            # [i'|j]
+            bufv = view(buf, 1:3*Nij)
+
+            # [i'|j] -- raw (Ni,Nj,3), no permutation
             if x_in_A[1]
-                cint2c2e_ip1_sph!(buf, @SVector([i,j]), BS.lib)
-                for q in 1:3
-                    r = (1+Nij*(q-1)):(q*Nij)
-                    ∇q = reshape(buf[r], Int(Ni), Int(Nj))
-                    out[I,J,q] += -∇q
+                ∇ERI_2e2c_μ!(bufv, BS, i, j)
+                @inbounds for q = 1:3
+                    oq = Nij*(q-1)
+                    for b = 1:Nj, a = 1:Ni
+                        out[ioff+a, joff+b, q] += bufv[oq + a + Ni*(b-1)]
+                    end
                 end
             end
 
-            # [i|j']
+            # [i|j'] -- swap the arguments; raw (Nj,Ni,3), transposed in
             if x_in_A[2]
-                cint2c2e_ip1_sph!(buf, @SVector([j,i]), BS.lib)
-                for q in 1:3
-                    r = (1+Nij*(q-1)):(q*Nij)
-                    ∇q = reshape(buf[r], Int(Nj), Int(Ni))
-                    out[I,J,q] += -permutedims(∇q, (2,1))
+                ∇ERI_2e2c_μ!(bufv, BS, j, i)
+                @inbounds for q = 1:3
+                    oq = Nij*(q-1)
+                    for b = 1:Nj, a = 1:Ni
+                        out[ioff+a, joff+b, q] += bufv[oq + b + Nj*(a-1)]
+                    end
                 end
             end
 
+            # (P|Q) is symmetric, so mirror the block.
             if i != j
-                for q in 1:3
-                    # i,j permutation
-                    out[J, I, q] .= permutedims(out[I, J, q], (2,1))
+                @inbounds for q = 1:3, b = 1:Nj, a = 1:Ni
+                    out[joff+b, ioff+a, q] = out[ioff+a, joff+b, q]
                 end
             end
         end

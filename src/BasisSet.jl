@@ -190,12 +190,35 @@ BasisSet(name::String, atoms::Vector{A}; spherical::Bool=true, lib::Symbol=:libc
     build_basis_from_file(Val(spherical), name, atoms, lib)
 
 function normalize_shell!(::Type{SphericalShell}, coef, exp, n)
+
+    # Self-overlap of the contraction. Basis-set files give coefficients
+    # against *normalized* primitives, and the overlap of two of those is
+    # (2√(aᵢaⱼ)/(aᵢ+aⱼ))^(n+3/2), so this double sum is ⟨φ|φ⟩. It must be
+    # accumulated here, before the loop below folds the primitive
+    # normalization into `coef` -- afterwards these are no longer the
+    # coefficients of normalized primitives and the sum means nothing.
+    #
+    # Skipping this rescaling is only harmless when the file's contraction is
+    # already normalized, which holds for many basis-set files but not all.
+    # Basis Set Exchange's "Optimize General Contractions" output, for one,
+    # drops a primitive from a contracted block without rescaling what
+    # remains, leaving ⟨φ|φ⟩ far from 1. The Cartesian branch below has
+    # always applied this step; the spherical branch had not.
+    normsq = zero(eltype(coef))
+    @inbounds for i = eachindex(coef), j = eachindex(coef)
+        ei = exp[i]; ej = exp[j]
+        normsq += coef[i] * coef[j] * (2*sqrt(ei*ej) / (ei + ej))^(n + 1.5)
+    end
+
+    # Normalize primitives
     for i = eachindex(coef)
         a = exp[i]
         # normalization factor of function rⁿ exp(-ar²)
         s = 2^(2n+3) * factorial(n+1) * (2a)^(n+1.5) / (factorial(2n+2) * √π)
-        coef[i] *= √s 
+        coef[i] *= √s
     end
+
+    coef ./= sqrt(normsq)
 end
 
 function normalize_shell!(::Type{CartesianShell}, coef, exp, l)

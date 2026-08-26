@@ -68,6 +68,44 @@ function rinv_env(BS::BasisSet, R)
 end
 
 """
+    ∇2nuclear_rinv_μμ!(out, BS::BasisSet{LCint}, env, i::Int, j::Int)
+    ∇2nuclear_rinv_μν!(out, BS::BasisSet{LCint}, env, i::Int, j::Int)
+
+Libcint calls for the `1/|r-C|` (single-nucleus) Hessian pieces of the
+nuclear-attraction integral, for shells `i,j` of `BS`. `env` selects WHICH
+nucleus: it is a copy of `BS.lib.env` with the rinv origin overwritten (see
+`rinv_env`), the same way [`∇nuclear_μ!`](@ref) takes a charge-fudged `atm`
+array to select which potential it differentiates.
+
+`_μμ!` places both derivatives on shell `i`; `_μν!` places one on shell `i`
+and one on shell `j`. Both return a raw `(Ni,Nj,3,3)` block and accept a
+contiguous view.
+
+!!! warning "Derivative-axis order"
+    `_μν!` returns its two derivative axes in **(ket, bra)** order. Unlike
+    the two-center `ipXip` kernels, a mixed bra/ket derivative here involves
+    *three* independent points (bra center, ket center, rinv origin), so it
+    has no reason to be symmetric under swapping those axes and the caller
+    must orient it explicitly.
+
+> No bounds checking, no zero-block skipping, no output-size validation.
+"""
+function ∇2nuclear_rinv_μμ!(out, BS::BasisSet{LCint}, env, i::Int, j::Int)
+    lib = BS.lib
+    cint1e_ipiprinv_sph!(out, @SVector(Cint[i-1, j-1]),
+                         lib.atm, lib.natm, lib.bas, lib.nbas, env)
+    return out
+end
+
+@doc (@doc ∇2nuclear_rinv_μμ!)
+function ∇2nuclear_rinv_μν!(out, BS::BasisSet{LCint}, env, i::Int, j::Int)
+    lib = BS.lib
+    cint1e_iprinvip_sph!(out, @SVector(Cint[i-1, j-1]),
+                         lib.atm, lib.natm, lib.bas, lib.nbas, env)
+    return out
+end
+
+"""
     ∇2nuclear(BS::BasisSet, iA, iB) -> Array{Float64,4}
 
 Second derivative (Hessian) of the AO nuclear attraction matrix `V` w.r.t.
@@ -81,6 +119,19 @@ function ∇2nuclear(BS::BasisSet, iA, iB)
     return ∇2nuclear!(out, BS, iA, iB)
 end
 
+"""
+    ∇2nuclear!(out, BS::BasisSet, iA, iB)
+
+Mutating counterpart of [`∇2nuclear`](@ref): writes the dense
+`nbas × nbas × 3 × 3` Hessian into `out` instead of allocating it. `out` is
+zeroed first, so a reused buffer is safe.
+
+Assembles both contributions -- the piece with both derivatives on shell
+centers (summed over every nucleus) and the piece with at least one
+derivative on a moving nuclear charge (isolated one nucleus at a time
+through a repositionable point-charge operator, see
+[`∇2nuclear_rinv_μμ!`](@ref)).
+"""
 function ∇2nuclear!(out, BS::BasisSet, iA, iB)
 
     if size(out) != (BS.nbas, BS.nbas, 3, 3)
@@ -110,7 +161,6 @@ function ∇2nuclear!(out, BS::BasisSet, iA, iB)
     kk_buf = zeros(Cdouble, Nmax, Nmax, 3, 3)
     bkT_buf = zeros(Cdouble, Nmax, Nmax, 3, 3)
     block_buf = zeros(Cdouble, Nmax, Nmax, 3, 3)
-    shls = zeros(Cint, 2)
 
     nuclei = Aat == Bat ? (Aat,) : (Aat, Bat)
 
@@ -159,25 +209,29 @@ function ∇2nuclear!(out, BS::BasisSet, iA, iB)
                 block = view(block_buf, 1:Ni, 1:Nj, :, :)
                 block .= 0.0
 
-                shls[1] = i-1; shls[2] = j-1
                 bufv = view(buf, 1:9*Nij)
-                cint1e_ipiprinv_sph!(bufv, shls, lib.atm, lib.natm, lib.bas, lib.nbas, env_c)
-                bb .= reshape(bufv, Ni, Nj, 3, 3)
 
-                # cint1e_iprinvip_sph!'s two derivative-component axes come out
-                # in (ket,bra) order, not (bra,ket) -- unlike the same-shell
-                # ipXip kernels (ipovlpip/ipkinip/ipnucip and ipiprinv here),
-                # a mixed bra/ket derivative of a *3-center* integral (bra,
-                # ket, and the rinv origin are three independent points) has
-                # no reason to be symmetric under swapping those two axes, so
-                # the raw layout must be corrected explicitly (verified
-                # against a direct finite difference of cint1e_iprinv_sph!).
-                cint1e_iprinvip_sph!(bufv, shls, lib.atm, lib.natm, lib.bas, lib.nbas, env_c)
-                permutedims!(bk, reshape(bufv, Ni, Nj, 3, 3), (1,2,4,3))
+                # The three permutations below used to go through
+                # permutedims!, which allocates ~384 B per call even as the
+                # in-place form -- 3 of them per (nucleus, shell pair) was the
+                # bulk of this routine's allocation. Folded into scalar fills.
+                ∇2nuclear_rinv_μμ!(bufv, BS, env_c, i, j)          # raw (Ni,Nj,3,3)
+                @inbounds for q = 1:3, p = 1:3, b = 1:Nj, a = 1:Ni
+                    bb[a,b,p,q] = bufv[Nij*(p-1) + 3*Nij*(q-1) + a + Ni*(b-1)]
+                end
 
-                shls[1] = j-1; shls[2] = i-1
-                cint1e_ipiprinv_sph!(bufv, shls, lib.atm, lib.natm, lib.bas, lib.nbas, env_c)
-                permutedims!(kk, reshape(bufv, Nj, Ni, 3, 3), (2,1,3,4))
+                # _μν! returns its derivative axes in (ket,bra) order -- see
+                # its docstring -- so bk[a,b,p,q] = raw[a,b,q,p].
+                ∇2nuclear_rinv_μν!(bufv, BS, env_c, i, j)          # raw (Ni,Nj,3,3)
+                @inbounds for q = 1:3, p = 1:3, b = 1:Nj, a = 1:Ni
+                    bb_idx = Nij*(q-1) + 3*Nij*(p-1) + a + Ni*(b-1)
+                    bk[a,b,p,q] = bufv[bb_idx]
+                end
+
+                ∇2nuclear_rinv_μμ!(bufv, BS, env_c, j, i)          # raw (Nj,Ni,3,3)
+                @inbounds for q = 1:3, p = 1:3, b = 1:Nj, a = 1:Ni
+                    kk[a,b,p,q] = bufv[Nij*(p-1) + 3*Nij*(q-1) + b + Nj*(a-1)]
+                end
 
                 # bk is NOT symmetric under its own (3,3)-axis swap (unlike
                 # bb/kk, which are same-point mixed partials and always are),
@@ -185,7 +239,9 @@ function ∇2nuclear!(out, BS::BasisSet, iA, iB)
                 # d2/dket_p dop_q = Zc*(bk^T+kk)[p,q] genuinely differ from
                 # their (p,q)<->(q,k) counterparts -- each of the two
                 # activation sites below needs its own orientation.
-                permutedims!(bkT, bk, (1,2,4,3))
+                @inbounds for q = 1:3, p = 1:3, b = 1:Nj, a = 1:Ni
+                    bkT[a,b,p,q] = bk[a,b,q,p]
+                end
 
                 if need_bo
                     (X_i && Cb) && (block .+= Zc .* (bb .+ bk))    # d2/dbra_m dop_k
